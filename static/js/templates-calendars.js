@@ -175,17 +175,30 @@ function populateScheduleTable(template) {
         
         days.forEach(day => {
             const blockData = schedule[day] && schedule[day][timeSlot] || {};
-            const hasData = blockData.caregiver_id || blockData.activity_id;
-            const caregiverName = blockData.caregiver_id ? (getCaregiverName(blockData.caregiver_id) || 'Unknown') : '';
-            const activityName = blockData.activity_id ? (getActivityName(blockData.activity_id) || 'Unknown') : '';
+            const hasData = (blockData.caregiver_ids && blockData.caregiver_ids.length) || 
+                           (blockData.activity_ids && blockData.activity_ids.length);
+            
+            let caregiverNames = '';
+            if (blockData.caregiver_ids && blockData.caregiver_ids.length) {
+                caregiverNames = blockData.caregiver_ids
+                    .map(id => getCaregiverName(id) || 'Unknown')
+                    .join(', ');
+            }
+            
+            let activityNames = '';
+            if (blockData.activity_ids && blockData.activity_ids.length) {
+                activityNames = blockData.activity_ids
+                    .map(id => getActivityName(id) || 'Unknown')
+                    .join(', ');
+            }
             
             html += `
                 <td>
                     <div class="schedule-block ${hasData ? 'has-data' : ''}" data-day="${day}" data-time="${timeSlot}">
                         ${hasData ? `
-                            <div class="caregiver-name">${caregiverName}</div>
-                            <div class="activity-name">${activityName}</div>
-                            <div class="notes">${blockData.notes || ''}</div>
+                            ${caregiverNames ? `<div class="caregiver-name"><strong>Caregivers:</strong> ${caregiverNames}</div>` : ''}
+                            ${activityNames ? `<div class="activity-name"><strong>Activities:</strong> ${activityNames}</div>` : ''}
+                            ${blockData.notes ? `<div class="notes">${blockData.notes}</div>` : ''}
                         ` : ''}
                     </div>
                 </td>
@@ -215,19 +228,29 @@ function editBlock(day, time) {
     $('#block-day').val(day);
     $('#block-time').val(time);
     
-    // Set values
-    $('#block-caregiver').val(blockData.caregiver_id || '');
-    $('#block-activity').val(blockData.activity_id || '');
+    // Populate selects
+    populateCaregiverSelect();
+    populateActivitySelect();
+    
+    // Set selected values - handle both old format (single ID) and new format (array of IDs)
+    if (blockData.caregiver_ids && blockData.caregiver_ids.length) {
+        // Handle multiple IDs (new format)
+        setMultiSelectValues('block-caregivers', blockData.caregiver_ids);
+    } else if (blockData.caregiver_id) {
+        // Handle single ID (old format for backward compatibility)
+        setMultiSelectValues('block-caregivers', [blockData.caregiver_id]);
+    }
+    
+    if (blockData.activity_ids && blockData.activity_ids.length) {
+        // Handle multiple IDs (new format)
+        setMultiSelectValues('block-activities', blockData.activity_ids);
+    } else if (blockData.activity_id) {
+        // Handle single ID (old format for backward compatibility)
+        setMultiSelectValues('block-activities', [blockData.activity_id]);
+    }
+    
+    // Set notes
     $('#block-notes').val(blockData.notes || '');
-    
-    // Populate selects if needed
-    if ($('#block-caregiver option').length <= 1) {
-        populateCaregiverSelect();
-    }
-    
-    if ($('#block-activity option').length <= 1) {
-        populateActivitySelect();
-    }
     
     // Show modal
     $('#blockModalLabel').text(`Edit Block: ${day} ${time}`);
@@ -235,31 +258,59 @@ function editBlock(day, time) {
     blockModal.show();
 }
 
+// Helper function to set multiple select values
+function setMultiSelectValues(selectId, values) {
+    const select = document.getElementById(selectId);
+    if (!select || !values || !values.length) return;
+    
+    for (let i = 0; i < select.options.length; i++) {
+        select.options[i].selected = values.includes(select.options[i].value);
+    }
+}
+
 function populateCaregiverSelect() {
-    let html = '<option value="">None</option>';
+    let html = '';
     
-    caregivers.forEach(caregiver => {
-        html += `<option value="${caregiver.id}">${caregiver.name}</option>`;
-    });
+    if (caregivers.length === 0) {
+        html = '<option value="">No caregivers available</option>';
+    } else {
+        caregivers.forEach(caregiver => {
+            html += `<option value="${caregiver.id}">${caregiver.name}</option>`;
+        });
+    }
     
-    $('#block-caregiver').html(html);
+    $('#block-caregivers').html(html);
 }
 
 function populateActivitySelect() {
-    let html = '<option value="">None</option>';
+    let html = '';
     
-    activities.forEach(activity => {
-        html += `<option value="${activity.id}">${activity.name}</option>`;
-    });
+    if (activities.length === 0) {
+        html = '<option value="">No activities available</option>';
+    } else {
+        activities.forEach(activity => {
+            const category = categories.find(c => c.id === activity.category_id);
+            const categoryName = category ? category.name : 'Uncategorized';
+            html += `<option value="${activity.id}">${activity.name} (${categoryName})</option>`;
+        });
+    }
     
-    $('#block-activity').html(html);
+    $('#block-activities').html(html);
+}
+
+// Helper function to get multiple selected values from a select element
+function getMultiSelectValues(selectId) {
+    const select = document.getElementById(selectId);
+    if (!select) return [];
+    
+    return Array.from(select.selectedOptions).map(option => option.value).filter(val => val);
 }
 
 function saveBlock() {
     const day = $('#block-day').val();
     const time = $('#block-time').val();
-    const caregiverId = $('#block-caregiver').val();
-    const activityId = $('#block-activity').val();
+    const caregiverIds = getMultiSelectValues('block-caregivers');
+    const activityIds = getMultiSelectValues('block-activities');
     const notes = $('#block-notes').val();
     
     // Initialize schedule object if needed
@@ -271,26 +322,47 @@ function saveBlock() {
         currentTemplate.schedule[day] = {};
     }
     
-    // Update block data
+    // Update block data with arrays for IDs
     currentTemplate.schedule[day][time] = {
-        caregiver_id: caregiverId,
-        activity_id: activityId,
+        caregiver_ids: caregiverIds,
+        activity_ids: activityIds,
         notes: notes
     };
     
+    // For backward compatibility, also store the first ID in the old single ID fields
+    if (caregiverIds.length > 0) {
+        currentTemplate.schedule[day][time].caregiver_id = caregiverIds[0];
+    }
+    
+    if (activityIds.length > 0) {
+        currentTemplate.schedule[day][time].activity_id = activityIds[0];
+    }
+    
     // Update display
-    const hasData = caregiverId || activityId;
-    const caregiverName = caregiverId ? (getCaregiverName(caregiverId) || 'Unknown') : '';
-    const activityName = activityId ? (getActivityName(activityId) || 'Unknown') : '';
+    const hasData = caregiverIds.length > 0 || activityIds.length > 0;
+    
+    let caregiverNames = '';
+    if (caregiverIds.length > 0) {
+        caregiverNames = caregiverIds
+            .map(id => getCaregiverName(id) || 'Unknown')
+            .join(', ');
+    }
+    
+    let activityNames = '';
+    if (activityIds.length > 0) {
+        activityNames = activityIds
+            .map(id => getActivityName(id) || 'Unknown')
+            .join(', ');
+    }
     
     const blockElement = $(`.schedule-block[data-day="${day}"][data-time="${time}"]`);
     blockElement.toggleClass('has-data', hasData);
     
     if (hasData) {
         blockElement.html(`
-            <div class="caregiver-name">${caregiverName}</div>
-            <div class="activity-name">${activityName}</div>
-            <div class="notes">${notes || ''}</div>
+            ${caregiverNames ? `<div class="caregiver-name"><strong>Caregivers:</strong> ${caregiverNames}</div>` : ''}
+            ${activityNames ? `<div class="activity-name"><strong>Activities:</strong> ${activityNames}</div>` : ''}
+            ${notes ? `<div class="notes">${notes}</div>` : ''}
         `);
     } else {
         blockElement.empty();
@@ -513,20 +585,41 @@ function populateCaregiverPerformance() {
     
     caregivers.sort((a, b) => (b.performance_score || 0) - (a.performance_score || 0));
     
+    // Map to store caregiver assignment counts
+    const caregiverAssignments = {};
+    
+    // Initialize assignment counts
     caregivers.forEach(caregiver => {
-        // Count activities assigned to this caregiver in templates
-        let activityCount = 0;
-        templates.forEach(template => {
-            if (template.schedule) {
-                Object.values(template.schedule).forEach(daySchedule => {
-                    Object.values(daySchedule).forEach(block => {
-                        if (block.caregiver_id === caregiver.id) {
-                            activityCount++;
+        caregiverAssignments[caregiver.id] = 0;
+    });
+    
+    // Count activities assigned to each caregiver in templates
+    templates.forEach(template => {
+        if (template.schedule) {
+            Object.values(template.schedule).forEach(daySchedule => {
+                Object.values(daySchedule).forEach(block => {
+                    // Check for new data structure (caregiver_ids array)
+                    if (block.caregiver_ids && Array.isArray(block.caregiver_ids)) {
+                        block.caregiver_ids.forEach(caregiverId => {
+                            if (caregiverAssignments[caregiverId] !== undefined) {
+                                caregiverAssignments[caregiverId]++;
+                            }
+                        });
+                    } 
+                    // Check for old data structure (single caregiver_id)
+                    else if (block.caregiver_id) {
+                        if (caregiverAssignments[block.caregiver_id] !== undefined) {
+                            caregiverAssignments[block.caregiver_id]++;
                         }
-                    });
+                    }
                 });
-            }
-        });
+            });
+        }
+    });
+    
+    // Generate the report HTML
+    caregivers.forEach(caregiver => {
+        const activityCount = caregiverAssignments[caregiver.id] || 0;
         
         html += `
             <tr>

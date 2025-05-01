@@ -618,18 +618,18 @@
                         <input type="hidden" id="block-day">
                         <input type="hidden" id="block-time">
                         <div class="mb-3">
-                            <label for="block-caregiver" class="form-label">Caregiver</label>
-                            <select class="form-select" id="block-caregiver">
-                                <option value="">None</option>
-                                <!-- Caregivers will be loaded here -->
+                            <label for="block-caregivers" class="form-label">Caregivers</label>
+                            <select class="form-select" id="block-caregivers" multiple size="5">
+                                <option value="">Loading caregivers...</option>
                             </select>
+                            <small class="form-text text-muted">Hold Ctrl (Windows) or Cmd (Mac) to select multiple caregivers</small>
                         </div>
                         <div class="mb-3">
-                            <label for="block-activity" class="form-label">Activity</label>
-                            <select class="form-select" id="block-activity">
-                                <option value="">None</option>
-                                <!-- Activities will be loaded here -->
+                            <label for="block-activities" class="form-label">Activities</label>
+                            <select class="form-select" id="block-activities" multiple size="5">
+                                <option value="">Loading activities...</option>
                             </select>
+                            <small class="form-text text-muted">Hold Ctrl (Windows) or Cmd (Mac) to select multiple activities</small>
                         </div>
                         <div class="mb-3">
                             <label for="block-notes" class="form-label">Notes</label>

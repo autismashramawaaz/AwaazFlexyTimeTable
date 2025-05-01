@@ -83,10 +83,15 @@
     cursor: pointer;
     border: 1px solid #dee2e6;
     transition: all 0.3s;
+    overflow-y: auto;
+    max-height: 120px;
+    font-size: 0.85rem;
 }
 
 .schedule-block:hover {
     background-color: #e9ecef;
+    transform: scale(1.02);
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
 }
 
 .schedule-block.has-data {
@@ -95,11 +100,46 @@
 }
 
 .schedule-block .caregiver-name {
-    font-weight: bold;
+    font-weight: 400;
+    margin-bottom: 0.2rem;
+}
+
+.schedule-block .caregiver-name strong {
+    font-weight: 600;
+    color: #0d6efd;
 }
 
 .schedule-block .activity-name {
-    font-style: italic;
+    font-style: normal;
+    margin-bottom: 0.2rem;
+}
+
+.schedule-block .activity-name strong {
+    font-weight: 600;
+    color: #198754;
+}
+
+.schedule-block .notes {
+    font-size: 0.8rem;
+    color: #6c757d;
+    margin-top: 0.3rem;
+    border-top: 1px dashed #dee2e6;
+    padding-top: 0.3rem;
+}
+
+/* Multi-select styling */
+select[multiple] {
+    overflow-y: auto;
+}
+
+select[multiple] option {
+    padding: 0.5rem;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+select[multiple] option:checked {
+    background-color: #d1ecf1;
+    color: #000;
 }
 
 /* Calendar Block Styles */
