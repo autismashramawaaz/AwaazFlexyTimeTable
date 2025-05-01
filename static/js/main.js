@@ -6,6 +6,8 @@ let templates = [];
 let calendars = [];
 let currentTemplate = null;
 let currentCalendar = null;
+let backups = [];
+let gitStatus = {};
 
 // DOM Ready
 $(document).ready(function() {
@@ -50,8 +52,11 @@ $(document).ready(function() {
         loadActivities($(this).val());
     });
     
-    // Backup data event handler
+    // Backup and Git operation handlers
     $('#backup-btn').on('click', backupData);
+    $('#push-changes-btn').on('click', pushChanges);
+    $('#refresh-backups-btn').on('click', loadBackups);
+    $('#refresh-git-status-btn').on('click', loadGitStatus);
     
     // Picture preview handler
     $('#caregiver-picture').on('change', function() {
@@ -99,6 +104,10 @@ function loadSectionData(section) {
                 loadCalendars();
                 populateTemplateSelect('#calendar-template');
             });
+            break;
+        case 'backups':
+            loadBackups();
+            loadGitStatus();
             break;
         case 'reports':
             loadReports();
@@ -171,12 +180,126 @@ function showNotification(message, success = true) {
         .toast('show');
 }
 
-// Backup data 
+// Backup and Git Operations
 function backupData() {
-    $.get('/api/backup', function(response) {
+    const description = prompt('Enter a description for this backup (optional):');
+    const url = description ? `/api/backup?description=${encodeURIComponent(description)}` : '/api/backup';
+    
+    $.get(url, function(response) {
         showNotification('Backup created successfully!');
+        loadBackups();
     }).fail(function() {
         showNotification('Failed to create backup!', false);
+    });
+}
+
+function loadBackups() {
+    $.get('/api/backups', function(data) {
+        backups = data;
+        populateBackups();
+    }).fail(function() {
+        showNotification('Failed to load backups!', false);
+    });
+}
+
+function populateBackups() {
+    let html = '';
+    
+    backups.forEach(backup => {
+        const created = backup.metadata.created_at 
+            ? new Date(backup.metadata.created_at).toLocaleString()
+            : 'Unknown';
+            
+        html += `
+            <tr>
+                <td>${backup.id}</td>
+                <td>${created}</td>
+                <td>${backup.metadata.description || ''}</td>
+                <td class="action-buttons">
+                    <button class="btn btn-sm btn-warning restore-backup" data-id="${backup.id}">
+                        <i class="fa-solid fa-undo"></i> Restore
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    $('#backups-list').html(html || '<tr><td colspan="4" class="text-center">No backups found</td></tr>');
+    
+    // Add event handlers
+    $('.restore-backup').on('click', function() {
+        const id = $(this).data('id');
+        restoreBackup(id);
+    });
+}
+
+function restoreBackup(id) {
+    if (confirm(`Are you sure you want to restore from backup ${id}? This will overwrite current data.`)) {
+        $.ajax({
+            url: `/api/restore/${id}`,
+            type: 'POST',
+            success: function(response) {
+                showNotification('Backup restored successfully!');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            },
+            error: function() {
+                showNotification('Failed to restore backup!', false);
+            }
+        });
+    }
+}
+
+function loadGitStatus() {
+    $.get('/api/git/status', function(data) {
+        gitStatus = data;
+        updateGitStatusDisplay();
+    }).fail(function() {
+        showNotification('Failed to load Git status!', false);
+    });
+}
+
+function updateGitStatusDisplay() {
+    // Update branch name
+    $('#git-branch').text(gitStatus.branch || 'Unknown');
+    
+    // Update changes count
+    const changesCount = gitStatus.changes ? gitStatus.changes.length : 0;
+    $('#git-changes-count').text(changesCount);
+    
+    // Update changes list
+    let changesHtml = '';
+    if (gitStatus.changes && gitStatus.changes.length > 0) {
+        changesHtml = gitStatus.changes.map(change => `<li class="list-group-item">${change}</li>`).join('');
+    } else {
+        changesHtml = '<li class="list-group-item">No changes detected</li>';
+    }
+    $('#git-changes-list').html(changesHtml);
+    
+    // Update push button status
+    $('#push-changes-btn').prop('disabled', !gitStatus.has_changes);
+}
+
+function pushChanges() {
+    const message = prompt('Enter a commit message:');
+    if (!message) return;
+    
+    $.ajax({
+        url: '/api/git/push',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ message }),
+        success: function(response) {
+            showNotification('Changes pushed successfully!');
+            loadGitStatus();
+        },
+        error: function(xhr) {
+            const errorMsg = xhr.responseJSON && xhr.responseJSON.error 
+                ? xhr.responseJSON.error 
+                : 'Failed to push changes!';
+            showNotification(errorMsg, false);
+        }
     });
 }
 

@@ -52,6 +52,11 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" href="#" data-section="backups">
+                                <i class="fa-solid fa-cloud-upload-alt"></i> Backups & Git
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" href="#" data-section="reports">
                                 <i class="fa-solid fa-chart-pie"></i> Reports
                             </a>
@@ -251,6 +256,78 @@
                         </div>
                         <div class="row" id="calendars-list">
                             <!-- Calendars will be loaded here -->
+                        </div>
+                    </div>
+
+                    <!-- Backups and Git Section -->
+                    <div id="backups" class="content-section">
+                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                            <h1 class="h2">Backups & Git Management</h1>
+                            <div>
+                                <button id="backup-btn" class="btn btn-warning me-2">
+                                    <i class="fa-solid fa-download"></i> Create Backup
+                                </button>
+                                <button id="push-changes-btn" class="btn btn-primary">
+                                    <i class="fa-solid fa-upload"></i> Push Changes
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <!-- Git Status Panel -->
+                            <div class="col-md-5 mb-4">
+                                <div class="card">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h5 class="mb-0">Git Status</h5>
+                                        <button id="refresh-git-status-btn" class="btn btn-sm btn-outline-secondary">
+                                            <i class="fa-solid fa-sync"></i> Refresh
+                                        </button>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <p><strong>Current Branch:</strong> <span id="git-branch">Loading...</span></p>
+                                            <p><strong>Pending Changes:</strong> <span id="git-changes-count">0</span></p>
+                                        </div>
+                                        <div class="table-responsive">
+                                            <h6>Change Details:</h6>
+                                            <ul class="list-group" id="git-changes-list">
+                                                <li class="list-group-item">Loading...</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Backups Panel -->
+                            <div class="col-md-7 mb-4">
+                                <div class="card">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h5 class="mb-0">Data Backups</h5>
+                                        <button id="refresh-backups-btn" class="btn btn-sm btn-outline-secondary">
+                                            <i class="fa-solid fa-sync"></i> Refresh
+                                        </button>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover">
+                                                <thead>
+                                                    <tr>
+                                                        <th>ID</th>
+                                                        <th>Created At</th>
+                                                        <th>Description</th>
+                                                        <th>Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="backups-list">
+                                                    <tr>
+                                                        <td colspan="4" class="text-center">Loading backups...</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 

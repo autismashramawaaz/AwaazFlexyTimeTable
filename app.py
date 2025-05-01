@@ -4,11 +4,15 @@ from werkzeug.utils import secure_filename
 import json
 from datetime import datetime
 import shutil
+import subprocess
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'images', 'caregivers')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
+app.config['GIT_AUTO_PUSH'] = True  # Enable/disable automatic Git push
+app.config['GIT_REMOTE'] = 'origin'  # Git remote name
+app.config['GIT_BRANCH'] = 'master'  # Git branch to push to
 
 # Ensure data directories exist
 os.makedirs('data/caregivers', exist_ok=True)
@@ -20,9 +24,23 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Git utility functions
 def git_add_commit(file_path, message):
-    """Add and commit a file to git"""
-    os.system(f"git add {file_path}")
-    os.system(f'git commit -m "{message}"')
+    """Add and commit a file to git, then push if configured"""
+    try:
+        # Use subprocess instead of os.system for better control
+        subprocess.run(["git", "add", file_path], check=True)
+        subprocess.run(["git", "commit", "-m", message], check=True)
+        
+        # Push changes if auto push is enabled
+        if app.config['GIT_AUTO_PUSH']:
+            remote = app.config['GIT_REMOTE']
+            branch = app.config['GIT_BRANCH']
+            subprocess.run(["git", "push", remote, branch], check=True)
+            print(f"Successfully pushed changes to {remote}/{branch}")
+            
+    except subprocess.CalledProcessError as e:
+        print(f"Git operation failed: {e}")
+    except Exception as e:
+        print(f"Error in git operations: {e}")
 
 # Routes
 @app.route('/')
@@ -426,9 +444,197 @@ def backup_data():
         if os.path.exists(os.path.join('data', folder)):
             shutil.copytree(os.path.join('data', folder), os.path.join(backup_dir, folder))
     
+    # Copy caregiver images
+    if os.path.exists(app.config['UPLOAD_FOLDER']):
+        images_backup_dir = os.path.join(backup_dir, 'images', 'caregivers')
+        os.makedirs(images_backup_dir, exist_ok=True)
+        for filename in os.listdir(app.config['UPLOAD_FOLDER']):
+            shutil.copy2(
+                os.path.join(app.config['UPLOAD_FOLDER'], filename),
+                os.path.join(images_backup_dir, filename)
+            )
+    
+    # Create a JSON file with metadata about the backup
+    metadata = {
+        'timestamp': timestamp,
+        'created_at': datetime.now().isoformat(),
+        'description': request.args.get('description', f'Backup created at {timestamp}')
+    }
+    
+    with open(os.path.join(backup_dir, 'metadata.json'), 'w') as f:
+        json.dump(metadata, f, indent=2)
+    
     git_add_commit(backup_dir, f"Backup created at {timestamp}")
     
-    return jsonify({"message": f"Backup created at {timestamp}", "backup_dir": backup_dir})
+    return jsonify({
+        "message": f"Backup created at {timestamp}", 
+        "backup_dir": backup_dir,
+        "metadata": metadata
+    })
+
+@app.route('/api/backups', methods=['GET'])
+def list_backups():
+    """List all available backups"""
+    backups = []
+    
+    for dirname in os.listdir('data'):
+        if dirname.startswith('backup_'):
+            metadata_path = os.path.join('data', dirname, 'metadata.json')
+            if os.path.exists(metadata_path):
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                    backups.append({
+                        'id': dirname.replace('backup_', ''),
+                        'path': dirname,
+                        'metadata': metadata
+                    })
+            else:
+                # For backups without metadata
+                backups.append({
+                    'id': dirname.replace('backup_', ''),
+                    'path': dirname,
+                    'metadata': {
+                        'timestamp': dirname.replace('backup_', ''),
+                        'created_at': None,
+                        'description': f'Backup {dirname}'
+                    }
+                })
+    
+    # Sort by timestamp (newest first)
+    backups.sort(key=lambda x: x['id'], reverse=True)
+    
+    return jsonify(backups)
+
+@app.route('/api/restore/<backup_id>', methods=['POST'])
+def restore_backup(backup_id):
+    """Restore data from a backup"""
+    backup_dir = f'data/backup_{backup_id}'
+    
+    if not os.path.exists(backup_dir):
+        return jsonify({"error": f"Backup {backup_id} not found"}), 404
+    
+    # Create a backup of current state before restoring
+    current_timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    current_backup_dir = f'data/pre_restore_backup_{current_timestamp}'
+    
+    # Backup current data before restoring
+    backup_data()
+    
+    # Remove current data
+    for folder in ['caregivers', 'categories', 'activities', 'templates', 'calendars']:
+        folder_path = os.path.join('data', folder)
+        if os.path.exists(folder_path):
+            for filename in os.listdir(folder_path):
+                if filename != '.gitkeep':  # Keep .gitkeep files
+                    file_path = os.path.join(folder_path, filename)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+    
+    # Copy from backup
+    for folder in ['caregivers', 'categories', 'activities', 'templates', 'calendars']:
+        backup_folder = os.path.join(backup_dir, folder)
+        if os.path.exists(backup_folder):
+            for filename in os.listdir(backup_folder):
+                src_path = os.path.join(backup_folder, filename)
+                dst_path = os.path.join('data', folder, filename)
+                if os.path.isfile(src_path):
+                    shutil.copy2(src_path, dst_path)
+    
+    # Restore caregiver images if they exist in the backup
+    backup_images_dir = os.path.join(backup_dir, 'images', 'caregivers')
+    if os.path.exists(backup_images_dir):
+        # Clear current images
+        for filename in os.listdir(app.config['UPLOAD_FOLDER']):
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        
+        # Copy images from backup
+        for filename in os.listdir(backup_images_dir):
+            src_path = os.path.join(backup_images_dir, filename)
+            dst_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            if os.path.isfile(src_path):
+                shutil.copy2(src_path, dst_path)
+    
+    # Commit all changes
+    git_add_commit('data', f"Restored from backup {backup_id}")
+    
+    return jsonify({
+        "message": f"Data restored from backup {backup_id}",
+        "backup_id": backup_id
+    })
+
+@app.route('/api/git/status', methods=['GET'])
+def git_status():
+    """Get the current git status"""
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        
+        changes = result.stdout.strip().split('\n') if result.stdout.strip() else []
+        
+        # Get current branch
+        branch_result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        branch = branch_result.stdout.strip()
+        
+        return jsonify({
+            "branch": branch,
+            "changes": changes,
+            "has_changes": len(changes) > 0
+        })
+    except subprocess.CalledProcessError as e:
+        return jsonify({"error": f"Git operation failed: {str(e)}", "details": e.stderr}), 500
+    except Exception as e:
+        return jsonify({"error": f"Error: {str(e)}"}), 500
+
+@app.route('/api/git/push', methods=['POST'])
+def git_push():
+    """Force push all changes to the remote repository"""
+    try:
+        remote = app.config['GIT_REMOTE']
+        branch = app.config['GIT_BRANCH']
+        
+        # Add all changes
+        subprocess.run(["git", "add", "--all"], check=True)
+        
+        # Check if there are changes to commit
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        
+        if status_result.stdout.strip():
+            # Commit changes
+            message = request.json.get('message', f"Automatic commit at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            subprocess.run(["git", "commit", "-m", message], check=True)
+        
+        # Push to remote
+        push_result = subprocess.run(
+            ["git", "push", remote, branch],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        
+        return jsonify({
+            "message": f"Successfully pushed to {remote}/{branch}",
+            "details": push_result.stdout
+        })
+    except subprocess.CalledProcessError as e:
+        return jsonify({"error": f"Git operation failed: {str(e)}", "details": e.stderr}), 500
+    except Exception as e:
+        return jsonify({"error": f"Error: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True) 
