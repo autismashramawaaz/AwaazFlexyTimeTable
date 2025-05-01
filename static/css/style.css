@@ -142,6 +142,116 @@ select[multiple] option:checked {
     color: #000;
 }
 
+/* Calendar Views Styling */
+.calendar-view-panel {
+    display: none;
+}
+
+.calendar-view-panel.active {
+    display: block;
+}
+
+/* Hourly View */
+#hourly-view-table td {
+    height: 100px;
+    position: relative;
+    padding: 0.5rem;
+}
+
+#hourly-view-table .time-cell {
+    width: 80px;
+    vertical-align: middle;
+    text-align: center;
+    font-weight: bold;
+}
+
+/* Caregiver View */
+.caregiver-card {
+    margin-bottom: 1.5rem;
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.caregiver-card .card-header {
+    background-color: #e9ecef;
+    padding: 0.75rem 1rem;
+}
+
+.caregiver-schedule-day {
+    margin-bottom: 1rem;
+}
+
+.caregiver-schedule-day h5 {
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.caregiver-schedule-slot {
+    padding: 0.75rem;
+    background-color: #f8f9fa;
+    border-radius: 0.25rem;
+    margin-bottom: 0.5rem;
+    border-left: 4px solid #6c757d;
+}
+
+.caregiver-schedule-slot.active {
+    background-color: #d1ecf1;
+    border-left-color: #0dcaf0;
+}
+
+/* Gantt View */
+.gantt-row {
+    margin-bottom: 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    overflow: hidden;
+}
+
+.gantt-row-header {
+    background-color: #e9ecef;
+    padding: 0.75rem 1rem;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+}
+
+.gantt-row-body {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+}
+
+.gantt-day {
+    min-width: 150px;
+    border-right: 1px solid #dee2e6;
+    padding: 0.5rem;
+}
+
+.gantt-day:last-child {
+    border-right: none;
+}
+
+.gantt-slot {
+    padding: 0.5rem;
+    background-color: #f8f9fa;
+    border-radius: 0.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.gantt-day-header {
+    text-align: center;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+/* Export Links */
+.export-btn {
+    margin-left: 0.5rem;
+}
+
 /* Calendar Block Styles */
 #calendar-table .schedule-block.past {
     background-color: #f8f9fa;

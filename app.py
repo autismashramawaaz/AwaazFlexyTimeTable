@@ -1,10 +1,11 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, jsonify
+from flask import Flask, render_template, request, redirect, url_for, jsonify, make_response
 from werkzeug.utils import secure_filename
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, time
 import shutil
 import subprocess
+from urllib.parse import quote
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'
@@ -431,6 +432,243 @@ def delete_calendar(id):
         return jsonify({"message": "Calendar deleted successfully"})
     except FileNotFoundError:
         return jsonify({"error": "Calendar not found"}), 404
+
+# Calendar Export and View APIs
+@app.route('/api/calendars/<id>/export/ics', methods=['GET'])
+def export_calendar_ics(id):
+    """Export calendar to ICS format"""
+    try:
+        with open(os.path.join('data/calendars', f'{id}.json'), 'r') as f:
+            calendar = json.load(f)
+        
+        # Create ics content
+        ics_content = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//AwaazFlexyTimeTable//Calendar Export//EN",
+            f"X-WR-CALNAME:{calendar.get('name', 'Calendar')}",
+        ]
+        
+        # Get the schedule
+        schedule = calendar.get('schedule', {})
+        start_date = datetime.strptime(calendar.get('start_date', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d')
+        
+        day_map = {
+            'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 
+            'Friday': 4, 'Saturday': 5, 'Sunday': 6
+        }
+        
+        # Add events for each scheduled block
+        for day, time_slots in schedule.items():
+            day_offset = day_map.get(day, 0)
+            event_date = start_date + timedelta(days=day_offset)
+            
+            for time_slot, block_data in time_slots.items():
+                if not block_data:
+                    continue
+                
+                # Skip if no caregivers or activities
+                if (not block_data.get('caregiver_ids', []) and not block_data.get('caregiver_id')) or \
+                   (not block_data.get('activity_ids', []) and not block_data.get('activity_id')):
+                    continue
+                
+                # Parse time slot (e.g., "8-10" to start at 8:00 and end at 10:00)
+                start_hour, end_hour = map(int, time_slot.split('-'))
+                event_start = datetime.combine(event_date.date(), time(start_hour, 0, 0))
+                event_end = datetime.combine(event_date.date(), time(end_hour, 0, 0))
+                
+                # Format datetime for ics
+                dt_format = "%Y%m%dT%H%M%SZ"
+                
+                # Get caregiver names
+                caregiver_ids = block_data.get('caregiver_ids', [])
+                if block_data.get('caregiver_id') and block_data.get('caregiver_id') not in caregiver_ids:
+                    caregiver_ids.append(block_data.get('caregiver_id'))
+                
+                caregiver_names = []
+                for cg_id in caregiver_ids:
+                    try:
+                        with open(os.path.join('data/caregivers', f'{cg_id}.json'), 'r') as f:
+                            caregiver = json.load(f)
+                            caregiver_names.append(caregiver.get('name', 'Unknown'))
+                    except:
+                        caregiver_names.append('Unknown')
+                
+                # Get activity names
+                activity_ids = block_data.get('activity_ids', [])
+                if block_data.get('activity_id') and block_data.get('activity_id') not in activity_ids:
+                    activity_ids.append(block_data.get('activity_id'))
+                
+                activity_names = []
+                for act_id in activity_ids:
+                    try:
+                        with open(os.path.join('data/activities', f'{act_id}.json'), 'r') as f:
+                            activity = json.load(f)
+                            activity_names.append(activity.get('name', 'Unknown'))
+                    except:
+                        activity_names.append('Unknown')
+                
+                # Create event
+                event = [
+                    "BEGIN:VEVENT",
+                    f"UID:{calendar['id']}_{day}_{time_slot}@awaazflexytimetable",
+                    f"DTSTAMP:{datetime.now().strftime(dt_format)}",
+                    f"DTSTART:{event_start.strftime(dt_format)}",
+                    f"DTEND:{event_end.strftime(dt_format)}",
+                    f"SUMMARY:{', '.join(activity_names)}",
+                    f"DESCRIPTION:Caregivers: {', '.join(caregiver_names)}\\n" +
+                    (f"Notes: {block_data.get('notes', '')}" if block_data.get('notes') else ""),
+                    "END:VEVENT"
+                ]
+                
+                ics_content.extend(event)
+        
+        # Close the calendar
+        ics_content.append("END:VCALENDAR")
+        
+        # Create a response with the ICS content
+        response = make_response("\n".join(ics_content))
+        response.headers["Content-Disposition"] = f"attachment; filename={calendar.get('name', 'calendar')}.ics"
+        response.headers["Content-Type"] = "text/calendar"
+        return response
+    
+    except FileNotFoundError:
+        return jsonify({"error": "Calendar not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/calendars/<id>/export/google', methods=['GET'])
+def export_calendar_google(id):
+    """Get Google Calendar export link"""
+    try:
+        with open(os.path.join('data/calendars', f'{id}.json'), 'r') as f:
+            calendar = json.load(f)
+        
+        # Generate a URL that can be used to add events to Google Calendar
+        base_url = request.host_url.rstrip('/')
+        ics_url = f"{base_url}/api/calendars/{id}/export/ics"
+        
+        # Google Calendar URL to import from URL
+        google_calendar_url = f"https://calendar.google.com/calendar/r/settings/addbyurl?url={quote(ics_url)}"
+        
+        return jsonify({
+            "google_calendar_url": google_calendar_url,
+            "ics_url": ics_url
+        })
+    
+    except FileNotFoundError:
+        return jsonify({"error": "Calendar not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/calendars/<id>/view/<view_type>', methods=['GET'])
+def get_calendar_view(id, view_type):
+    """Get calendar data in different view formats"""
+    try:
+        with open(os.path.join('data/calendars', f'{id}.json'), 'r') as f:
+            calendar = json.load(f)
+        
+        # Get all caregivers and activities for reference
+        caregivers = []
+        for filename in os.listdir('data/caregivers'):
+            if filename.endswith('.json'):
+                with open(os.path.join('data/caregivers', filename), 'r') as f:
+                    caregiver = json.load(f)
+                    caregivers.append(caregiver)
+        
+        activities = []
+        for filename in os.listdir('data/activities'):
+            if filename.endswith('.json'):
+                with open(os.path.join('data/activities', filename), 'r') as f:
+                    activity = json.load(f)
+                    activities.append(activity)
+        
+        # Process schedule based on view type
+        schedule = calendar.get('schedule', {})
+        start_date = datetime.strptime(calendar.get('start_date', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d')
+        
+        if view_type == 'hourly':
+            # Return the default template schedule format (already grouped by day and time)
+            return jsonify({
+                "calendar": calendar,
+                "view_data": schedule,
+                "view_type": "hourly",
+                "start_date": calendar.get('start_date')
+            })
+        
+        elif view_type == 'caregiver':
+            # Group by caregiver
+            caregiver_view = {}
+            
+            for day, time_slots in schedule.items():
+                for time_slot, block_data in time_slots.items():
+                    # Check both caregiver_ids (new) and caregiver_id (old format)
+                    caregiver_ids = block_data.get('caregiver_ids', [])
+                    if block_data.get('caregiver_id') and block_data.get('caregiver_id') not in caregiver_ids:
+                        caregiver_ids.append(block_data.get('caregiver_id'))
+                    
+                    for cg_id in caregiver_ids:
+                        if cg_id not in caregiver_view:
+                            # Find caregiver info
+                            caregiver_info = next((cg for cg in caregivers if cg['id'] == cg_id), {"id": cg_id, "name": "Unknown"})
+                            caregiver_view[cg_id] = {
+                                "caregiver": caregiver_info,
+                                "schedule": {}
+                            }
+                        
+                        if day not in caregiver_view[cg_id]["schedule"]:
+                            caregiver_view[cg_id]["schedule"][day] = {}
+                        
+                        # Copy the block data
+                        caregiver_view[cg_id]["schedule"][day][time_slot] = block_data
+            
+            return jsonify({
+                "calendar": calendar,
+                "view_data": caregiver_view,
+                "view_type": "caregiver",
+                "start_date": calendar.get('start_date')
+            })
+        
+        elif view_type == 'grant':
+            # Gantt chart style - one row per activity
+            gantt_view = {}
+            
+            for day, time_slots in schedule.items():
+                for time_slot, block_data in time_slots.items():
+                    # Check both activity_ids (new) and activity_id (old format)
+                    activity_ids = block_data.get('activity_ids', [])
+                    if block_data.get('activity_id') and block_data.get('activity_id') not in activity_ids:
+                        activity_ids.append(block_data.get('activity_id'))
+                    
+                    for act_id in activity_ids:
+                        if act_id not in gantt_view:
+                            # Find activity info
+                            activity_info = next((act for act in activities if act['id'] == act_id), {"id": act_id, "name": "Unknown"})
+                            gantt_view[act_id] = {
+                                "activity": activity_info,
+                                "schedule": {}
+                            }
+                        
+                        if day not in gantt_view[act_id]["schedule"]:
+                            gantt_view[act_id]["schedule"][day] = {}
+                        
+                        # Copy the block data
+                        gantt_view[act_id]["schedule"][day][time_slot] = block_data
+            
+            return jsonify({
+                "calendar": calendar,
+                "view_data": gantt_view,
+                "view_type": "grant",
+                "start_date": calendar.get('start_date')
+            })
+        
+        else:
+            return jsonify({"error": f"Invalid view type: {view_type}"}), 400
+        
+    except FileNotFoundError:
+        return jsonify({"error": "Calendar not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Backup and restore functions
 @app.route('/api/backup', methods=['GET'])

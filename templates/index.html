@@ -259,6 +259,85 @@
                         </div>
                     </div>
 
+                    <!-- Calendar View Section -->
+                    <div id="calendar-view" class="content-section">
+                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                            <div>
+                                <h1 class="h2" id="calendar-view-title">Calendar View</h1>
+                                <p class="text-muted" id="calendar-view-description"></p>
+                            </div>
+                            <div class="d-flex">
+                                <div class="btn-group me-2">
+                                    <button id="view-hourly-btn" class="btn btn-outline-secondary">
+                                        <i class="fa-solid fa-clock"></i> Hourly View
+                                    </button>
+                                    <button id="view-caregiver-btn" class="btn btn-outline-secondary">
+                                        <i class="fa-solid fa-user-nurse"></i> Caregiver View
+                                    </button>
+                                    <button id="view-gantt-btn" class="btn btn-outline-secondary">
+                                        <i class="fa-solid fa-chart-gantt"></i> Gantt View
+                                    </button>
+                                </div>
+                                <div class="dropdown">
+                                    <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="exportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                        <i class="fa-solid fa-download"></i> Export
+                                    </button>
+                                    <ul class="dropdown-menu" aria-labelledby="exportDropdown">
+                                        <li><a class="dropdown-item" href="#" id="export-ics-link">
+                                            <i class="fa-solid fa-calendar-alt"></i> Download ICS
+                                        </a></li>
+                                        <li><a class="dropdown-item" href="#" id="export-google-link" target="_blank">
+                                            <i class="fa-brands fa-google"></i> Add to Google Calendar
+                                        </a></li>
+                                    </ul>
+                                </div>
+                                <button id="close-calendar-view-btn" class="btn btn-outline-secondary ms-2">
+                                    <i class="fa-solid fa-chevron-left"></i> Back
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Calendar Display Area -->
+                        <div id="calendar-view-container">
+                            <!-- Hourly View (Default) -->
+                            <div id="hourly-view" class="calendar-view-panel active">
+                                <div class="table-responsive">
+                                    <table class="table table-bordered" id="hourly-view-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Time</th>
+                                                <th>Monday</th>
+                                                <th>Tuesday</th>
+                                                <th>Wednesday</th>
+                                                <th>Thursday</th>
+                                                <th>Friday</th>
+                                                <th>Saturday</th>
+                                                <th>Sunday</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <!-- Populated dynamically -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            <!-- Caregiver View -->
+                            <div id="caregiver-view" class="calendar-view-panel">
+                                <div id="caregiver-view-container">
+                                    <!-- Populated dynamically with cards for each caregiver -->
+                                </div>
+                            </div>
+                            
+                            <!-- Gantt/Activity View -->
+                            <div id="gantt-view" class="calendar-view-panel">
+                                <div id="gantt-view-container">
+                                    <!-- Populated dynamically with activity rows -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Backups and Git Section -->
                     <div id="backups" class="content-section">
                         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">

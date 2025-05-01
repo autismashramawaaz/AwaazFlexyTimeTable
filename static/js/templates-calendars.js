@@ -1,3 +1,10 @@
+// Global variables for templates and calendars
+let templates = [];
+let currentTemplate = null;
+let calendars = [];
+let currentCalendar = null;
+let currentCalendarId = null;
+
 // Template CRUD Operations
 function loadTemplates() {
     return $.get('/api/templates', function(data) {
@@ -552,12 +559,280 @@ function deleteCalendar(id) {
 }
 
 function viewCalendar(id) {
+    currentCalendarId = id;
+    
+    // Fetch calendar data
     $.get(`/api/calendars/${id}`, function(calendar) {
         currentCalendar = calendar;
-        // Calendar view implementation would go here
-        showNotification('Calendar view not implemented yet.');
+        
+        // Set view title and description
+        $('#calendar-view-title').text(calendar.name || 'Calendar View');
+        $('#calendar-view-description').text(calendar.description || '');
+        
+        // Set export links
+        $('#export-ics-link').attr('href', `/api/calendars/${id}/export/ics`);
+        
+        // Get Google Calendar link
+        $.get(`/api/calendars/${id}/export/google`, function(data) {
+            $('#export-google-link').attr('href', data.google_calendar_url);
+        });
+        
+        // Load hourly view by default
+        loadCalendarView('hourly');
+        
+        // Hide calendars and show calendar view
+        $('.content-section.active').removeClass('active');
+        $('#calendar-view').addClass('active');
     });
 }
+
+// Load calendar in specified view type
+function loadCalendarView(viewType) {
+    // Set active button
+    $('.btn-group .btn').removeClass('active');
+    $(`#view-${viewType}-btn`).addClass('active');
+    
+    // Hide all view panels
+    $('.calendar-view-panel').removeClass('active');
+    
+    // Fetch and display the appropriate view
+    $.get(`/api/calendars/${currentCalendarId}/view/${viewType}`, function(data) {
+        // Show the appropriate view panel
+        $(`#${viewType}-view`).addClass('active');
+        
+        // Render view based on type
+        if (viewType === 'hourly') {
+            renderHourlyView(data);
+        } else if (viewType === 'caregiver') {
+            renderCaregiverView(data);
+        } else if (viewType === 'grant') {
+            renderGanttView(data);
+        }
+    });
+}
+
+// Render hourly view (similar to template schedule view)
+function renderHourlyView(data) {
+    const schedule = data.view_data || {};
+    const timeSlots = ['8-10', '10-12', '12-14', '14-16', '16-18', '18-20', '20-22'];
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    
+    let html = '';
+    timeSlots.forEach(timeSlot => {
+        html += `<tr><td class="time-cell">${timeSlot}</td>`;
+        
+        days.forEach(day => {
+            const blockData = schedule[day] && schedule[day][timeSlot] || {};
+            const hasData = (blockData.caregiver_ids && blockData.caregiver_ids.length) || 
+                           (blockData.activity_ids && blockData.activity_ids.length);
+            
+            let caregiverNames = '';
+            if (blockData.caregiver_ids && blockData.caregiver_ids.length) {
+                caregiverNames = blockData.caregiver_ids
+                    .map(id => getCaregiverName(id) || 'Unknown')
+                    .join(', ');
+            }
+            
+            let activityNames = '';
+            if (blockData.activity_ids && blockData.activity_ids.length) {
+                activityNames = blockData.activity_ids
+                    .map(id => getActivityName(id) || 'Unknown')
+                    .join(', ');
+            }
+            
+            html += `
+                <td>
+                    <div class="schedule-block ${hasData ? 'has-data' : ''}" data-day="${day}" data-time="${timeSlot}">
+                        ${hasData ? `
+                            ${caregiverNames ? `<div class="caregiver-name"><strong>Caregivers:</strong> ${caregiverNames}</div>` : ''}
+                            ${activityNames ? `<div class="activity-name"><strong>Activities:</strong> ${activityNames}</div>` : ''}
+                            ${blockData.notes ? `<div class="notes">${blockData.notes}</div>` : ''}
+                        ` : ''}
+                    </div>
+                </td>
+            `;
+        });
+        
+        html += '</tr>';
+    });
+    
+    $('#hourly-view-table tbody').html(html);
+}
+
+// Render caregiver view (grouped by caregiver)
+function renderCaregiverView(data) {
+    const caregiverView = data.view_data || {};
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    
+    let html = '<div class="row">';
+    
+    // Create a card for each caregiver
+    Object.values(caregiverView).forEach(cgData => {
+        const caregiver = cgData.caregiver;
+        const schedule = cgData.schedule;
+        
+        html += `
+            <div class="col-md-6 col-lg-4">
+                <div class="card caregiver-card">
+                    <div class="card-header">
+                        <h4>${caregiver.name}</h4>
+                        <div class="text-muted">Performance: ${caregiver.performance_score || 'N/A'}</div>
+                    </div>
+                    <div class="card-body">
+        `;
+        
+        // Add schedule for each day
+        days.forEach(day => {
+            html += `<div class="caregiver-schedule-day">
+                <h5>${day}</h5>
+            `;
+            
+            // If caregiver has slots for this day
+            if (schedule[day]) {
+                const timeSlots = Object.keys(schedule[day]).sort();
+                timeSlots.forEach(timeSlot => {
+                    const blockData = schedule[day][timeSlot];
+                    
+                    // Get activities for this block
+                    let activityNames = '';
+                    const activityIds = blockData.activity_ids || [];
+                    if (blockData.activity_id && !activityIds.includes(blockData.activity_id)) {
+                        activityIds.push(blockData.activity_id);
+                    }
+                    
+                    if (activityIds.length) {
+                        activityNames = activityIds
+                            .map(id => getActivityName(id) || 'Unknown')
+                            .join(', ');
+                    }
+                    
+                    html += `
+                        <div class="caregiver-schedule-slot active">
+                            <div><strong>${timeSlot}</strong></div>
+                            <div>${activityNames}</div>
+                            ${blockData.notes ? `<div class="text-muted small">${blockData.notes}</div>` : ''}
+                        </div>
+                    `;
+                });
+            } else {
+                html += `<div class="text-muted">No activities scheduled</div>`;
+            }
+            
+            html += `</div>`;
+        });
+        
+        html += `
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    
+    $('#caregiver-view-container').html(html);
+}
+
+// Render Gantt view (grouped by activity)
+function renderGanttView(data) {
+    const ganttView = data.view_data || {};
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    
+    let html = '';
+    
+    // Create a row for each activity
+    Object.values(ganttView).forEach(actData => {
+        const activity = actData.activity;
+        const schedule = actData.schedule;
+        
+        // Get category name
+        let categoryName = 'Uncategorized';
+        if (activity.category_id) {
+            categoryName = getCategoryName(activity.category_id) || 'Uncategorized';
+        }
+        
+        html += `
+            <div class="gantt-row">
+                <div class="gantt-row-header">
+                    <div>${activity.name}</div>
+                    <div class="text-muted">${categoryName}</div>
+                </div>
+                <div class="gantt-row-body">
+        `;
+        
+        // Add columns for each day
+        days.forEach(day => {
+            html += `
+                <div class="gantt-day">
+                    <div class="gantt-day-header">${day}</div>
+            `;
+            
+            // If activity has slots for this day
+            if (schedule[day]) {
+                const timeSlots = Object.keys(schedule[day]).sort();
+                timeSlots.forEach(timeSlot => {
+                    const blockData = schedule[day][timeSlot];
+                    
+                    // Get caregivers for this block
+                    let caregiverNames = '';
+                    const caregiverIds = blockData.caregiver_ids || [];
+                    if (blockData.caregiver_id && !caregiverIds.includes(blockData.caregiver_id)) {
+                        caregiverIds.push(blockData.caregiver_id);
+                    }
+                    
+                    if (caregiverIds.length) {
+                        caregiverNames = caregiverIds
+                            .map(id => getCaregiverName(id) || 'Unknown')
+                            .join(', ');
+                    }
+                    
+                    html += `
+                        <div class="gantt-slot">
+                            <div><strong>${timeSlot}</strong></div>
+                            <div><small>Caregivers: ${caregiverNames}</small></div>
+                            ${blockData.notes ? `<div class="text-muted small">${blockData.notes}</div>` : ''}
+                        </div>
+                    `;
+                });
+            } else {
+                html += `<div class="text-muted">No slots</div>`;
+            }
+            
+            html += `
+                </div>
+            `;
+        });
+        
+        html += `
+                </div>
+            </div>
+        `;
+    });
+    
+    $('#gantt-view-container').html(html);
+}
+
+// Event Handlers for Calendar Views
+$(document).ready(function() {
+    // View type buttons
+    $('#view-hourly-btn').click(function() {
+        loadCalendarView('hourly');
+    });
+    
+    $('#view-caregiver-btn').click(function() {
+        loadCalendarView('caregiver');
+    });
+    
+    $('#view-gantt-btn').click(function() {
+        loadCalendarView('grant');
+    });
+    
+    // Back button
+    $('#close-calendar-view-btn').click(function() {
+        $('.content-section.active').removeClass('active');
+        $('#calendars').addClass('active');
+    });
+});
 
 // Report functions
 function loadReports() {
