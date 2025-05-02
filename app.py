@@ -31,9 +31,9 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 def git_add_commit(file_path, message):
     """Add and commit a file to git, then push if configured"""
     # Skip Git operations in production environment or if Git is not available
-    if app.config['ENVIRONMENT'] == 'production':
-        print(f"Production environment detected, skipping Git operations for {file_path}")
-        return
+   # if app.config['ENVIRONMENT'] == 'production':
+    #    print(f"Production environment detected, skipping Git operations for {file_path}")
+    #    return
         
     # Get the auto-push setting directly from environment for reliability
     auto_push = os.environ.get('GIT_AUTO_PUSH', 'false').lower() == 'true'
