@@ -1,10 +1,3 @@
-// Global variables for templates and calendars
-let templates = [];
-let currentTemplate = null;
-let calendars = [];
-let currentCalendar = null;
-let currentCalendarId = null;
-
 // Template CRUD Operations
 function loadTemplates() {
     return $.get('/api/templates', function(data) {
@@ -420,76 +413,112 @@ function loadCalendars() {
 }
 
 function populateCalendars() {
-    let html = '';
-    
+    if (!calendars || calendars.length === 0) {
+        $('#calendarsContainer').html('<p>No calendars available. Create a new calendar to get started.</p>');
+        return;
+    }
+
+    let html = `
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Template</th>
+                    <th>Start Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
     calendars.forEach(calendar => {
+        const template = templates.find(t => t.id === calendar.template_id);
+        const templateName = template ? template.name : 'None';
+        const startDate = calendar.start_date ? new Date(calendar.start_date).toLocaleDateString() : 'Not set';
+
         html += `
-            <div class="col-md-4">
-                <div class="card calendar-card">
-                    <div class="card-body">
-                        <h5 class="card-title">${calendar.name}</h5>
-                        <p class="card-text">Start Date: ${calendar.start_date || 'Not set'}</p>
-                        <p class="card-text">${calendar.description || ''}</p>
-                        <div class="d-flex justify-content-between">
-                            <button class="btn btn-sm btn-outline-primary view-calendar" data-id="${calendar.id}">
-                                <i class="fa-solid fa-calendar-week"></i> View
-                            </button>
-                            <div>
-                                <button class="btn btn-sm btn-outline-primary edit-calendar" data-id="${calendar.id}">
-                                    <i class="fa-solid fa-edit"></i>
-                                </button>
-                                <button class="btn btn-sm btn-outline-danger delete-calendar" data-id="${calendar.id}">
-                                    <i class="fa-solid fa-trash"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <tr>
+                <td>${calendar.name}</td>
+                <td>${templateName}</td>
+                <td>${startDate}</td>
+                <td>
+                    <button class="btn btn-sm btn-info view-calendar-btn" data-id="${calendar.id}">
+                        <i class="fas fa-calendar-alt"></i> View
+                    </button>
+                    <button class="btn btn-sm btn-primary edit-calendar-btn" data-id="${calendar.id}">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button class="btn btn-sm btn-danger delete-calendar-btn" data-id="${calendar.id}">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </td>
+            </tr>
         `;
     });
-    
-    $('#calendars-list').html(html || '<div class="col-12 text-center">No calendars found</div>');
-    
-    // Add event handlers
-    $('.edit-calendar').on('click', function() {
-        const id = $(this).data('id');
-        editCalendar(id);
-    });
-    
-    $('.delete-calendar').on('click', function() {
-        const id = $(this).data('id');
-        deleteCalendar(id);
-    });
-    
-    $('.view-calendar').on('click', function() {
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    $('#calendarsContainer').html(html);
+
+    // Set up event handlers
+    $('.view-calendar-btn').click(function() {
         const id = $(this).data('id');
         viewCalendar(id);
     });
+    
+    $('.edit-calendar-btn').click(function() {
+        const id = $(this).data('id');
+        showCalendarModal(id);
+    });
+
+    $('.delete-calendar-btn').click(function() {
+        const id = $(this).data('id');
+        if (confirm('Are you sure you want to delete this calendar?')) {
+            deleteCalendar(id);
+        }
+    });
 }
 
-function showCalendarModal(calendar = null) {
-    // Reset form
+function showCalendarModal(calendarOrId = null) {
+    // Reset the form
     $('#calendar-form')[0].reset();
+    $('#calendar-id').val('');
     
-    if (calendar) {
-        // Edit mode
-        $('#calendarModalLabel').text('Edit Calendar');
-        $('#calendar-id').val(calendar.id);
-        $('#calendar-name').val(calendar.name);
-        $('#calendar-template').val(calendar.template_id || '');
-        $('#calendar-start-date').val(calendar.start_date || '');
-        $('#calendar-description').val(calendar.description || '');
-    } else {
-        // Add mode
-        $('#calendarModalLabel').text('Add Calendar');
-        $('#calendar-id').val('');
-        $('#calendar-start-date').val(new Date().toISOString().split('T')[0]);
+    const modalTitle = calendarOrId ? 'Edit Calendar' : 'Add Calendar';
+    $('#calendarModalLabel').text(modalTitle);
+    
+    // Populate template dropdown
+    populateTemplateSelect('#calendar-template-id');
+    
+    // If editing a calendar
+    if (calendarOrId) {
+        // If we received an ID instead of a calendar object
+        if (typeof calendarOrId === 'string' || typeof calendarOrId === 'number') {
+            const id = calendarOrId;
+            $.get(`/api/calendars/${id}`, function(calendar) {
+                populateCalendarForm(calendar);
+            });
+        } else {
+            // If we received a calendar object directly
+            populateCalendarForm(calendarOrId);
+        }
     }
     
-    // Show modal
-    const calendarModal = new bootstrap.Modal(document.getElementById('calendarModal'));
-    calendarModal.show();
+    // Show the modal
+    const modal = new bootstrap.Modal(document.getElementById('calendarModal'));
+    modal.show();
+}
+
+function populateCalendarForm(calendar) {
+    // Populate form fields with calendar data
+    $('#calendar-id').val(calendar.id);
+    $('#calendar-name').val(calendar.name);
+    $('#calendar-template').val(calendar.template_id || '');
+    $('#calendar-start-date').val(calendar.start_date || '');
+    $('#calendar-description').val(calendar.description || '');
 }
 
 function saveCalendar() {
@@ -559,73 +588,137 @@ function deleteCalendar(id) {
 }
 
 function viewCalendar(id) {
-    currentCalendarId = id;
-    
-    // Fetch calendar data
     $.get(`/api/calendars/${id}`, function(calendar) {
         currentCalendar = calendar;
         
-        // Set view title and description
-        $('#calendar-view-title').text(calendar.name || 'Calendar View');
-        $('#calendar-view-description').text(calendar.description || '');
-        
-        // Set export links
-        $('#export-ics-link').attr('href', `/api/calendars/${id}/export/ics`);
-        
-        // Get Google Calendar link
-        $.get(`/api/calendars/${id}/export/google`, function(data) {
-            $('#export-google-link').attr('href', data.google_calendar_url);
-        });
-        
-        // Load hourly view by default
-        loadCalendarView('hourly');
-        
-        // Hide calendars and show calendar view
-        $('.content-section.active').removeClass('active');
-        $('#calendar-view').addClass('active');
-    });
-}
-
-// Load calendar in specified view type
-function loadCalendarView(viewType) {
-    // Set active button
-    $('.btn-group .btn').removeClass('active');
-    $(`#view-${viewType}-btn`).addClass('active');
-    
-    // Hide all view panels
-    $('.calendar-view-panel').removeClass('active');
-    
-    // Fetch and display the appropriate view
-    $.get(`/api/calendars/${currentCalendarId}/view/${viewType}`, function(data) {
-        // Show the appropriate view panel
-        $(`#${viewType}-view`).addClass('active');
-        
-        // Render view based on type
-        if (viewType === 'hourly') {
-            renderHourlyView(data);
-        } else if (viewType === 'caregiver') {
-            renderCaregiverView(data);
-        } else if (viewType === 'grant') {
-            renderGanttView(data);
+        // If calendar has a template, get the template data
+        if (calendar.template_id) {
+            const template = templates.find(t => t.id === calendar.template_id);
+            if (template) {
+                // Start date of the calendar
+                const startDate = calendar.start_date ? new Date(calendar.start_date) : new Date();
+                
+                // Initialize current week to first week
+                currentCalendar.currentWeekOffset = 0;
+                
+                // Show calendar view
+                showCalendarView(calendar, template, startDate);
+            } else {
+                showNotification(`Template not found for calendar ${calendar.name}`, false);
+            }
+        } else {
+            showNotification(`No template associated with calendar ${calendar.name}`, false);
         }
     });
 }
 
-// Render hourly view (similar to template schedule view)
-function renderHourlyView(data) {
-    const schedule = data.view_data || {};
-    const timeSlots = ['8-10', '10-12', '12-14', '14-16', '16-18', '18-20', '20-22'];
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+function showCalendarView(calendar, template, startDate) {
+    // Set modal title
+    $('#calendarViewModalLabel').text(`Calendar View: ${calendar.name}`);
+    $('#calendar-view-title').text(calendar.name);
     
-    let html = '';
-    timeSlots.forEach(timeSlot => {
-        html += `<tr><td class="time-cell">${timeSlot}</td>`;
+    // Calculate week dates based on current week offset
+    const weekOffset = calendar.currentWeekOffset || 0;
+    const weekStartDate = new Date(startDate);
+    
+    // Adjust weekStartDate to the Monday of the week containing startDate
+    const dayOfWeek = weekStartDate.getDay(); // 0 (Sunday) to 6 (Saturday)
+    const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Handle Sunday special case
+    weekStartDate.setDate(weekStartDate.getDate() + daysToMonday + (weekOffset * 7));
+    
+    // Generate and display week range
+    const weekEndDate = new Date(weekStartDate);
+    weekEndDate.setDate(weekEndDate.getDate() + 6);
+    
+    $('#week-display').text(
+        `Week: ${formatDate(weekStartDate)} - ${formatDate(weekEndDate)}`
+    );
+    
+    // Update the date headers
+    updateCalendarDateHeaders(weekStartDate);
+    
+    // Populate calendar schedule
+    populateCalendarSchedule(calendar, template, weekStartDate);
+    
+    // Show modal
+    const calendarViewModal = new bootstrap.Modal(document.getElementById('calendarViewModal'));
+    calendarViewModal.show();
+    
+    // Set up week navigation handlers
+    $('#prev-week-btn').off('click').on('click', function() {
+        calendar.currentWeekOffset--;
+        showCalendarView(calendar, template, startDate);
+    });
+    
+    $('#next-week-btn').off('click').on('click', function() {
+        calendar.currentWeekOffset++;
+        showCalendarView(calendar, template, startDate);
+    });
+    
+    // Set up print handler
+    $('#print-calendar-btn').off('click').on('click', function() {
+        window.print();
+    });
+}
+
+function updateCalendarDateHeaders(weekStartDate) {
+    const dateHeaderRow = $('#calendar-dates-header');
+    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    
+    // Clear existing headers except the first time column
+    dateHeaderRow.find('th:not(:first-child)').remove();
+    
+    // Today's date for comparison
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Add date headers for each day of the week
+    for (let i = 0; i < 7; i++) {
+        const currentDate = new Date(weekStartDate);
+        currentDate.setDate(currentDate.getDate() + i);
         
-        days.forEach(day => {
-            const blockData = schedule[day] && schedule[day][timeSlot] || {};
+        const dateStr = formatDate(currentDate, 'short');
+        const isToday = isSameDay(currentDate, today);
+        
+        dateHeaderRow.append(`
+            <th class="${isToday ? 'today-header' : ''}" data-date="${formatDate(currentDate, 'iso')}">
+                ${dayNames[i]}<br>${dateStr}
+            </th>
+        `);
+    }
+}
+
+function populateCalendarSchedule(calendar, template, weekStartDate) {
+    const timeSlots = ['8-10', '10-12', '12-14', '14-16', '16-18', '18-20', '20-22'];
+    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const schedule = template.schedule || {};
+    const tbody = $('#calendar-view-table tbody');
+    
+    // Clear existing content
+    tbody.empty();
+    
+    // Today's date for comparison
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Generate schedule rows for each time slot
+    timeSlots.forEach(timeSlot => {
+        let html = `<tr><td>${timeSlot}</td>`;
+        
+        // For each day of the week
+        for (let i = 0; i < 7; i++) {
+            const dayName = dayNames[i];
+            const currentDate = new Date(weekStartDate);
+            currentDate.setDate(currentDate.getDate() + i);
+            
+            const dateStr = formatDate(currentDate, 'short');
+            const blockData = schedule[dayName] && schedule[dayName][timeSlot] || {};
+            
+            // Determine if the block has data
             const hasData = (blockData.caregiver_ids && blockData.caregiver_ids.length) || 
                            (blockData.activity_ids && blockData.activity_ids.length);
             
+            // Get caregiver and activity names
             let caregiverNames = '';
             if (blockData.caregiver_ids && blockData.caregiver_ids.length) {
                 caregiverNames = blockData.caregiver_ids
@@ -640,9 +733,21 @@ function renderHourlyView(data) {
                     .join(', ');
             }
             
+            // Determine block class based on date
+            let blockClass = 'calendar-block';
+            if (hasData) blockClass += ' has-data';
+            
+            if (isSameDay(currentDate, today)) {
+                blockClass += ' today';
+            } else if (currentDate < today) {
+                blockClass += ' past';
+            } else {
+                blockClass += ' future';
+            }
+            
             html += `
                 <td>
-                    <div class="schedule-block ${hasData ? 'has-data' : ''}" data-day="${day}" data-time="${timeSlot}">
+                    <div class="${blockClass}" data-date="${formatDate(currentDate, 'iso')}">
                         ${hasData ? `
                             ${caregiverNames ? `<div class="caregiver-name"><strong>Caregivers:</strong> ${caregiverNames}</div>` : ''}
                             ${activityNames ? `<div class="activity-name"><strong>Activities:</strong> ${activityNames}</div>` : ''}
@@ -651,188 +756,53 @@ function renderHourlyView(data) {
                     </div>
                 </td>
             `;
-        });
-        
-        html += '</tr>';
-    });
-    
-    $('#hourly-view-table tbody').html(html);
-}
-
-// Render caregiver view (grouped by caregiver)
-function renderCaregiverView(data) {
-    const caregiverView = data.view_data || {};
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    
-    let html = '<div class="row">';
-    
-    // Create a card for each caregiver
-    Object.values(caregiverView).forEach(cgData => {
-        const caregiver = cgData.caregiver;
-        const schedule = cgData.schedule;
-        
-        html += `
-            <div class="col-md-6 col-lg-4">
-                <div class="card caregiver-card">
-                    <div class="card-header">
-                        <h4>${caregiver.name}</h4>
-                        <div class="text-muted">Performance: ${caregiver.performance_score || 'N/A'}</div>
-                    </div>
-                    <div class="card-body">
-        `;
-        
-        // Add schedule for each day
-        days.forEach(day => {
-            html += `<div class="caregiver-schedule-day">
-                <h5>${day}</h5>
-            `;
-            
-            // If caregiver has slots for this day
-            if (schedule[day]) {
-                const timeSlots = Object.keys(schedule[day]).sort();
-                timeSlots.forEach(timeSlot => {
-                    const blockData = schedule[day][timeSlot];
-                    
-                    // Get activities for this block
-                    let activityNames = '';
-                    const activityIds = blockData.activity_ids || [];
-                    if (blockData.activity_id && !activityIds.includes(blockData.activity_id)) {
-                        activityIds.push(blockData.activity_id);
-                    }
-                    
-                    if (activityIds.length) {
-                        activityNames = activityIds
-                            .map(id => getActivityName(id) || 'Unknown')
-                            .join(', ');
-                    }
-                    
-                    html += `
-                        <div class="caregiver-schedule-slot active">
-                            <div><strong>${timeSlot}</strong></div>
-                            <div>${activityNames}</div>
-                            ${blockData.notes ? `<div class="text-muted small">${blockData.notes}</div>` : ''}
-                        </div>
-                    `;
-                });
-            } else {
-                html += `<div class="text-muted">No activities scheduled</div>`;
-            }
-            
-            html += `</div>`;
-        });
-        
-        html += `
-                    </div>
-                </div>
-            </div>
-        `;
-    });
-    
-    html += '</div>';
-    
-    $('#caregiver-view-container').html(html);
-}
-
-// Render Gantt view (grouped by activity)
-function renderGanttView(data) {
-    const ganttView = data.view_data || {};
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    
-    let html = '';
-    
-    // Create a row for each activity
-    Object.values(ganttView).forEach(actData => {
-        const activity = actData.activity;
-        const schedule = actData.schedule;
-        
-        // Get category name
-        let categoryName = 'Uncategorized';
-        if (activity.category_id) {
-            categoryName = getCategoryName(activity.category_id) || 'Uncategorized';
         }
         
-        html += `
-            <div class="gantt-row">
-                <div class="gantt-row-header">
-                    <div>${activity.name}</div>
-                    <div class="text-muted">${categoryName}</div>
-                </div>
-                <div class="gantt-row-body">
-        `;
-        
-        // Add columns for each day
-        days.forEach(day => {
-            html += `
-                <div class="gantt-day">
-                    <div class="gantt-day-header">${day}</div>
-            `;
-            
-            // If activity has slots for this day
-            if (schedule[day]) {
-                const timeSlots = Object.keys(schedule[day]).sort();
-                timeSlots.forEach(timeSlot => {
-                    const blockData = schedule[day][timeSlot];
-                    
-                    // Get caregivers for this block
-                    let caregiverNames = '';
-                    const caregiverIds = blockData.caregiver_ids || [];
-                    if (blockData.caregiver_id && !caregiverIds.includes(blockData.caregiver_id)) {
-                        caregiverIds.push(blockData.caregiver_id);
-                    }
-                    
-                    if (caregiverIds.length) {
-                        caregiverNames = caregiverIds
-                            .map(id => getCaregiverName(id) || 'Unknown')
-                            .join(', ');
-                    }
-                    
-                    html += `
-                        <div class="gantt-slot">
-                            <div><strong>${timeSlot}</strong></div>
-                            <div><small>Caregivers: ${caregiverNames}</small></div>
-                            ${blockData.notes ? `<div class="text-muted small">${blockData.notes}</div>` : ''}
-                        </div>
-                    `;
-                });
-            } else {
-                html += `<div class="text-muted">No slots</div>`;
-            }
-            
-            html += `
-                </div>
-            `;
-        });
-        
-        html += `
-                </div>
-            </div>
-        `;
+        html += '</tr>';
+        tbody.append(html);
     });
-    
-    $('#gantt-view-container').html(html);
 }
 
-// Event Handlers for Calendar Views
-$(document).ready(function() {
-    // View type buttons
-    $('#view-hourly-btn').click(function() {
-        loadCalendarView('hourly');
-    });
+// Helper function to format dates
+function formatDate(date, format = 'medium') {
+    if (!date) return '';
     
-    $('#view-caregiver-btn').click(function() {
-        loadCalendarView('caregiver');
-    });
+    const d = new Date(date);
     
-    $('#view-gantt-btn').click(function() {
-        loadCalendarView('grant');
-    });
+    switch (format) {
+        case 'iso':
+            // YYYY-MM-DD
+            return d.toISOString().split('T')[0];
+            
+        case 'short':
+            // MMM D (e.g., May 1)
+            return new Intl.DateTimeFormat('en-US', { 
+                month: 'short', 
+                day: 'numeric' 
+            }).format(d);
+            
+        case 'medium':
+        default:
+            // MMM D, YYYY (e.g., May 1, 2025)
+            return new Intl.DateTimeFormat('en-US', { 
+                month: 'short', 
+                day: 'numeric', 
+                year: 'numeric' 
+            }).format(d);
+    }
+}
+
+// Helper function to check if two dates are the same day
+function isSameDay(date1, date2) {
+    if (!date1 || !date2) return false;
     
-    // Back button
-    $('#close-calendar-view-btn').click(function() {
-        $('.content-section.active').removeClass('active');
-        $('#calendars').addClass('active');
-    });
-});
+    const d1 = new Date(date1);
+    const d2 = new Date(date2);
+    
+    return d1.getFullYear() === d2.getFullYear() &&
+           d1.getMonth() === d2.getMonth() &&
+           d1.getDate() === d2.getDate();
+}
 
 // Report functions
 function loadReports() {
@@ -934,4 +904,15 @@ function populateActivitiesByCategory() {
     });
     
     $('#activities-by-category').html(html || '<tr><td colspan="2" class="text-center">No data available</td></tr>');
-} 
+}
+
+// Event Handlers for Calendars
+$(document).ready(function() {
+    // Add calendar button
+    $('#add-calendar-btn').off('click').on('click', function() {
+        showCalendarModal();
+    });
+    
+    // Save calendar button
+    $('#save-calendar').off('click').on('click', saveCalendar);
+}); 

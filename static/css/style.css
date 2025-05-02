@@ -142,116 +142,6 @@ select[multiple] option:checked {
     color: #000;
 }
 
-/* Calendar Views Styling */
-.calendar-view-panel {
-    display: none;
-}
-
-.calendar-view-panel.active {
-    display: block;
-}
-
-/* Hourly View */
-#hourly-view-table td {
-    height: 100px;
-    position: relative;
-    padding: 0.5rem;
-}
-
-#hourly-view-table .time-cell {
-    width: 80px;
-    vertical-align: middle;
-    text-align: center;
-    font-weight: bold;
-}
-
-/* Caregiver View */
-.caregiver-card {
-    margin-bottom: 1.5rem;
-    border-radius: 0.5rem;
-    overflow: hidden;
-}
-
-.caregiver-card .card-header {
-    background-color: #e9ecef;
-    padding: 0.75rem 1rem;
-}
-
-.caregiver-schedule-day {
-    margin-bottom: 1rem;
-}
-
-.caregiver-schedule-day h5 {
-    margin-bottom: 0.5rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid #dee2e6;
-}
-
-.caregiver-schedule-slot {
-    padding: 0.75rem;
-    background-color: #f8f9fa;
-    border-radius: 0.25rem;
-    margin-bottom: 0.5rem;
-    border-left: 4px solid #6c757d;
-}
-
-.caregiver-schedule-slot.active {
-    background-color: #d1ecf1;
-    border-left-color: #0dcaf0;
-}
-
-/* Gantt View */
-.gantt-row {
-    margin-bottom: 1rem;
-    border: 1px solid #dee2e6;
-    border-radius: 0.25rem;
-    overflow: hidden;
-}
-
-.gantt-row-header {
-    background-color: #e9ecef;
-    padding: 0.75rem 1rem;
-    font-weight: bold;
-    display: flex;
-    justify-content: space-between;
-}
-
-.gantt-row-body {
-    display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-}
-
-.gantt-day {
-    min-width: 150px;
-    border-right: 1px solid #dee2e6;
-    padding: 0.5rem;
-}
-
-.gantt-day:last-child {
-    border-right: none;
-}
-
-.gantt-slot {
-    padding: 0.5rem;
-    background-color: #f8f9fa;
-    border-radius: 0.25rem;
-    margin-bottom: 0.5rem;
-}
-
-.gantt-day-header {
-    text-align: center;
-    font-weight: bold;
-    margin-bottom: 0.5rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid #dee2e6;
-}
-
-/* Export Links */
-.export-btn {
-    margin-left: 0.5rem;
-}
-
 /* Calendar Block Styles */
 #calendar-table .schedule-block.past {
     background-color: #f8f9fa;
@@ -266,6 +156,134 @@ select[multiple] option:checked {
 #calendar-table .schedule-block.future {
     background-color: #d4edda;
     border-color: #c3e6cb;
+}
+
+/* Calendar View Styles */
+#calendar-view-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+#calendar-view-table th {
+    text-align: center;
+    vertical-align: middle;
+}
+
+#calendar-view-table tbody td {
+    height: 80px;
+    vertical-align: middle;
+    padding: 0.5rem;
+}
+
+#calendar-dates-header th {
+    font-size: 0.9rem;
+    padding: 0.4rem;
+    background-color: #f8f9fa;
+}
+
+.today-header {
+    background-color: #fff3cd !important;
+    font-weight: bold;
+    position: relative;
+}
+
+.today-header::after {
+    content: "Today";
+    position: absolute;
+    top: 0;
+    right: 0;
+    font-size: 0.7rem;
+    background-color: #ffc107;
+    color: #000;
+    padding: 0.1rem 0.3rem;
+    border-radius: 0 0 0 0.25rem;
+}
+
+.calendar-block {
+    min-height: 60px;
+    border-radius: 0.25rem;
+    padding: 0.5rem;
+    margin: 0;
+    cursor: default;
+    border: 1px solid #dee2e6;
+    overflow-y: auto;
+    max-height: 120px;
+    font-size: 0.85rem;
+}
+
+.calendar-block.past {
+    background-color: #f8f9fa;
+    color: #6c757d;
+}
+
+.calendar-block.today {
+    background-color: #fff3cd;
+    border-color: #ffeeba;
+    box-shadow: 0 0 0.25rem rgba(255, 193, 7, 0.5);
+}
+
+.calendar-block.future {
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+}
+
+.calendar-block.has-data:hover {
+    transform: scale(1.02);
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.calendar-block .date-label {
+    font-size: 0.75rem;
+    background-color: rgba(0, 0, 0, 0.05);
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.25rem;
+    float: right;
+    margin-bottom: 0.3rem;
+}
+
+#week-display {
+    font-size: 1rem;
+    padding: 0.5rem 1rem;
+}
+
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    
+    #calendarViewModal,
+    #calendarViewModal * {
+        visibility: visible;
+    }
+    
+    #calendarViewModal {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 15px;
+    }
+    
+    #calendarViewModal .modal-dialog {
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+    }
+    
+    #calendarViewModal .modal-content {
+        border: none;
+        box-shadow: none;
+    }
+    
+    #print-calendar-btn,
+    #calendarViewModal .btn-close,
+    #prev-week-btn,
+    #next-week-btn,
+    #calendarViewModal .modal-footer .btn-secondary {
+        display: none;
+    }
 }
 
 /* Picture Preview */
