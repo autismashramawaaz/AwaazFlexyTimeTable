@@ -27,6 +27,17 @@ os.makedirs('data/templates', exist_ok=True)
 os.makedirs('data/calendars', exist_ok=True)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+# After app initialization
+if app.config['ENVIRONMENT'] == 'production':
+    git_user_name = os.environ.get('GIT_USER_NAME')
+    git_user_email = os.environ.get('GIT_USER_EMAIL')
+    if git_user_name and git_user_email:
+        try:
+            subprocess.run(["git", "config", "--global", "user.name", git_user_name], check=True)
+            subprocess.run(["git", "config", "--global", "user.email", git_user_email], check=True)
+        except Exception as e:
+            print(f"Failed to configure git credentials: {e}")
+
 # Git utility functions
 def git_add_commit(file_path, message):
     """Add and commit a file to git, then push if configured"""
