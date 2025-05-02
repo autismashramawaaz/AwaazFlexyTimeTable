@@ -1,7 +1,15 @@
 {
-  "name": "CG6",
+  "name": "Kisha",
+  "initials": "",
   "performance_score": "",
-  "hourly_rate": "",
-  "location": "",
-  "id": "20250501164310"
+  "default_hourly_rate": "",
+  "id": "20250501164310",
+  "picture": "",
+  "location_rates": [
+    {
+      "location": "Turlock",
+      "rate": 20
+    }
+  ],
+  "hourly_rate": ""
 }
