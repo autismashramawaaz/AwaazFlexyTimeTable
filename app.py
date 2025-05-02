@@ -42,7 +42,8 @@ if git_user_name and git_user_email:
 def git_add_commit(file_path, message):
     """Add and commit a file to git, then push if configured"""
     # Skip Git operations in production environment or if Git is not available
-   # if app.config['ENVIRONMENT'] == 'production':
+    # We're allowing Git in production now, so comment this out
+    # if app.config['ENVIRONMENT'] == 'production':
     #    print(f"Production environment detected, skipping Git operations for {file_path}")
     #    return
         
@@ -51,6 +52,14 @@ def git_add_commit(file_path, message):
     print(f"Git auto-push setting from environment: {auto_push}")
     
     try:
+        # Configure Git user info for this commit if environment variables are available
+        git_user_name = os.environ.get('GIT_USER_NAME', 'AwaazFlexyTimeTable')
+        git_user_email = os.environ.get('GIT_USER_EMAIL', 'app@awaazflexytimetable.onrender.com')
+        
+        # Set local Git configuration for this repository
+        subprocess.run(["git", "config", "user.name", git_user_name], check=True)
+        subprocess.run(["git", "config", "user.email", git_user_email], check=True)
+        
         # Use subprocess instead of os.system for better control
         subprocess.run(["git", "add", file_path], check=True)
         subprocess.run(["git", "commit", "-m", message], check=True)
@@ -720,6 +729,66 @@ def git_push():
         return jsonify({"error": f"Git operation failed: {str(e)}", "details": e.stderr}), 500
     except Exception as e:
         return jsonify({"error": f"Error: {str(e)}"}), 500
+
+# Test endpoint for Git configuration
+@app.route('/api/git/test', methods=['GET'])
+def test_git_config():
+    """Test Git configuration and operations"""
+    try:
+        # Create a temporary test file
+        test_file_path = 'test_git_config.txt'
+        with open(test_file_path, 'w') as f:
+            f.write(f"Git test from {app.config['ENVIRONMENT']} environment\n")
+            f.write(f"Timestamp: {datetime.now().isoformat()}\n")
+            f.write(f"Server: {request.host}\n")
+            
+        # Get Git configuration
+        git_config = subprocess.run(
+            ["git", "config", "--list"],
+            check=True,
+            capture_output=True,
+            text=True
+        ).stdout
+        
+        # Try to add and commit the file (won't push)
+        add_result = subprocess.run(
+            ["git", "add", test_file_path],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        
+        commit_result = subprocess.run(
+            ["git", "commit", "-m", f"Test commit from {app.config['ENVIRONMENT']} at {datetime.now().isoformat()}"],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        
+        # Test auto-push setting but don't actually push
+        auto_push = os.environ.get('GIT_AUTO_PUSH', 'false').lower() == 'true'
+        
+        return jsonify({
+            "environment": app.config['ENVIRONMENT'],
+            "git_config": git_config.strip().split('\n'),
+            "auto_push_enabled": auto_push,
+            "test_file": test_file_path,
+            "add_result": add_result.stdout.strip(),
+            "commit_result": commit_result.stdout.strip(),
+            "success": True,
+            "message": "Git configuration test completed successfully"
+        })
+    except subprocess.CalledProcessError as e:
+        return jsonify({
+            "error": f"Git operation failed: {str(e)}",
+            "details": e.stderr,
+            "success": False
+        }), 500
+    except Exception as e:
+        return jsonify({
+            "error": f"Error: {str(e)}",
+            "success": False
+        }), 500
 
 if __name__ == '__main__':
     # Use environment variables for host and port if available

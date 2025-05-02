@@ -14,4 +14,10 @@ services:
       - key: GIT_AUTO_PUSH
         value: true
       - key: WEB_CONCURRENCY
-        value: 4 
+        value: 4
+      - key: GIT_USER_NAME
+        value: "AwaazFlexyTimeTable App"
+      - key: GIT_USER_EMAIL
+        value: "app@awaazflexytimetable.onrender.com"
+      - key: GITHUB_TOKEN
+        sync: false # This will be set manually in the Render dashboard 
