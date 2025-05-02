@@ -6,6 +6,7 @@ from datetime import datetime
 import shutil
 import subprocess
 from dotenv import load_dotenv
+import sys
 
 # Load environment variables from .env file if it exists
 load_dotenv()
@@ -60,22 +61,115 @@ def git_add_commit(file_path, message):
         subprocess.run(["git", "config", "user.name", git_user_name], check=True)
         subprocess.run(["git", "config", "user.email", git_user_email], check=True)
         
+        # Check if we're in a git repository
+        try:
+            subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], check=True, 
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except subprocess.CalledProcessError:
+            print("Not in a git repository. Initializing...")
+            subprocess.run(["git", "init"], check=True)
+            
+            # Set up remote if GIT_REPOSITORY_URL is provided
+            repo_url = os.environ.get('GIT_REPOSITORY_URL')
+            if repo_url:
+                try:
+                    # Check if origin remote exists
+                    result = subprocess.run(["git", "remote"], check=True, 
+                                          stdout=subprocess.PIPE, text=True)
+                    remotes = result.stdout.strip().split('\n')
+                    
+                    if 'origin' not in remotes:
+                        print(f"Adding remote origin: {repo_url}")
+                        subprocess.run(["git", "remote", "add", "origin", repo_url], check=True)
+                    else:
+                        print("Remote origin already exists. Setting URL...")
+                        subprocess.run(["git", "remote", "set-url", "origin", repo_url], check=True)
+                except Exception as e:
+                    print(f"Error setting up remote: {e}")
+        
         # Use subprocess instead of os.system for better control
         subprocess.run(["git", "add", file_path], check=True)
-        subprocess.run(["git", "commit", "-m", message], check=True)
+        
+        # Check if there are changes to commit
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain", file_path],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        
+        if not status_result.stdout.strip():
+            print(f"No changes to commit for {file_path}")
+            return
+            
+        commit_result = subprocess.run(["git", "commit", "-m", message], check=True,
+                                     capture_output=True, text=True)
+        print(commit_result.stdout)
         
         # Push changes if auto push is enabled
         if auto_push:
-            remote = app.config['GIT_REMOTE']
-            branch = app.config['GIT_BRANCH']
+            remote = os.environ.get('GIT_REMOTE', 'origin')
+            branch = os.environ.get('GIT_BRANCH', 'master')
+            
+            # Make sure the remote exists
+            remote_result = subprocess.run(["git", "remote", "-v"], 
+                                         capture_output=True, text=True)
+            print(f"Remotes: {remote_result.stdout}")
+            
+            if remote not in remote_result.stdout:
+                repo_url = os.environ.get('GIT_REPOSITORY_URL')
+                if repo_url:
+                    print(f"Remote {remote} not found. Adding it with URL: {repo_url}")
+                    subprocess.run(["git", "remote", "add", remote, repo_url], check=True)
+                else:
+                    print(f"Remote {remote} not found and GIT_REPOSITORY_URL not set. Cannot push.")
+                    return
+            
             print(f"Auto-push enabled, pushing to {remote}/{branch}...")
-            subprocess.run(["git", "push", remote, branch], check=True)
-            print(f"Successfully pushed changes to {remote}/{branch}")
+            
+            # Check if we need to set up HTTPS credentials for GitHub
+            github_token = os.environ.get('GITHUB_TOKEN')
+            if github_token:
+                remote_url = subprocess.run(
+                    ["git", "config", "--get", f"remote.{remote}.url"],
+                    capture_output=True, text=True, check=False
+                ).stdout.strip()
+                
+                if remote_url.startswith('https://github.com/'):
+                    # Update URL to include token
+                    new_url = f"https://{github_token}@github.com/{remote_url.split('github.com/')[1]}"
+                    subprocess.run(["git", "remote", "set-url", remote, new_url], check=True)
+                    print(f"Updated remote URL to use GitHub token for authentication")
+            
+            try:
+                push_result = subprocess.run(
+                    ["git", "push", remote, branch],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+                print(push_result.stdout)
+                print(f"Successfully pushed changes to {remote}/{branch}")
+            except subprocess.CalledProcessError as e:
+                print(f"Push failed: {e}")
+                print(f"Error output: {e.stderr}")
+                
+                # Try to diagnose the issue
+                if "not a git repository" in e.stderr:
+                    print("The remote repository is not properly configured. Check your GIT_REPOSITORY_URL setting.")
+                elif "Permission denied" in e.stderr:
+                    print("Permission denied. Check your GitHub token or SSH key.")
+                elif "Authentication failed" in e.stderr:
+                    print("Authentication failed. Check your GitHub token.")
+                elif "Could not read from remote repository" in e.stderr:
+                    print("Could not access the remote repository. Check if the URL is correct and accessible.")
         else:
             print("Auto-push disabled, skipping push")
             
     except subprocess.CalledProcessError as e:
         print(f"Git operation failed: {e}")
+        if hasattr(e, 'stderr') and e.stderr:
+            print(f"Error details: {e.stderr}")
     except Exception as e:
         print(f"Error in git operations: {e}")
 
@@ -787,6 +881,66 @@ def test_git_config():
     except Exception as e:
         return jsonify({
             "error": f"Error: {str(e)}",
+            "success": False
+        }), 500
+
+# Diagnostic endpoint for Git configuration
+@app.route('/api/git/diagnose', methods=['GET'])
+def diagnose_git():
+    """Run comprehensive Git diagnostic tests"""
+    try:
+        # Check if the diagnostic script exists
+        script_path = 'diagnose_git.py'
+        if not os.path.exists(script_path):
+            return jsonify({
+                "error": "Diagnostic script not found",
+                "success": False
+            }), 404
+            
+        # Run the diagnostic script
+        result = subprocess.run(
+            [sys.executable, script_path],
+            capture_output=True,
+            text=True,
+            env=os.environ.copy()
+        )
+        
+        # Parse the output to extract meaningful information
+        output_lines = result.stdout.split('\n')
+        sections = {}
+        current_section = "General"
+        sections[current_section] = []
+        
+        for line in output_lines:
+            if line.startswith("="*80):
+                # New section header follows
+                continue
+            elif line.startswith(" ") and len(line.strip()) > 0 and line.strip()[0] not in ["=", "$"]:
+                # This is a section header
+                current_section = line.strip()
+                sections[current_section] = []
+            else:
+                sections[current_section].append(line)
+        
+        # Extract environment variables
+        env_vars = {}
+        if "Environment Variables" in sections:
+            for line in sections["Environment Variables"]:
+                if ": " in line:
+                    key, value = line.split(": ", 1)
+                    env_vars[key] = value
+        
+        return jsonify({
+            "success": result.returncode == 0,
+            "output": result.stdout,
+            "error": result.stderr if result.stderr else None,
+            "sections": sections,
+            "environment": env_vars,
+            "exit_code": result.returncode
+        })
+    except Exception as e:
+        return jsonify({
+            "error": f"Error running diagnostic: {str(e)}",
             "success": False
         }), 500
 

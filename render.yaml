@@ -20,4 +20,6 @@ services:
       - key: GIT_USER_EMAIL
         value: "app@awaazflexytimetable.onrender.com"
       - key: GITHUB_TOKEN
-        sync: false # This will be set manually in the Render dashboard 
+        sync: false # This will be set manually in the Render dashboard
+      - key: GIT_REPOSITORY_URL
+        value: "https://github.com/autismashramawaaz/AwaazFlexyTimeTable.git" 

@@ -13,11 +13,36 @@ else
   echo "Warning: GIT_USER_NAME or GIT_USER_EMAIL environment variables not set."
 fi
 
+# Check if this is a Git repository
+if [ ! -d .git ]; then
+  echo "Initializing Git repository..."
+  git init
+fi
+
+# Check if origin remote exists and set it if needed
+if ! git remote | grep -q "^origin$"; then
+  echo "Setting up Git remote..."
+  # Get the repository URL from environment variable, or use a default
+  REPO_URL="${GIT_REPOSITORY_URL:-https://github.com/autismashramawaaz/AwaazFlexyTimeTable.git}"
+  git remote add origin "$REPO_URL"
+  echo "Added remote origin: $REPO_URL"
+fi
+
+# Get current remote URL
+CURRENT_REMOTE_URL=$(git config --get remote.origin.url || echo "none")
+echo "Current remote URL: $CURRENT_REMOTE_URL"
+
 # Set up HTTPS credentials if GITHUB_TOKEN is provided
 if [ -n "$GITHUB_TOKEN" ]; then
   echo "Configuring Git HTTPS credentials with token..."
   # Extract the repository URL
-  REPO_URL=$(git config --get remote.origin.url)
+  REPO_URL=$(git config --get remote.origin.url || echo "")
+  
+  if [ -z "$REPO_URL" ]; then
+    echo "No remote repository URL configured. Using default GitHub repository."
+    REPO_URL="https://github.com/autismashramawaaz/AwaazFlexyTimeTable.git"
+    git remote set-url origin "$REPO_URL" || git remote add origin "$REPO_URL"
+  fi
   
   # If URL starts with https://, update it to include the token
   if [[ $REPO_URL == https://* ]]; then
@@ -56,7 +81,7 @@ if [ -n "$SSH_PRIVATE_KEY" ]; then
   ssh -T git@github.com -o StrictHostKeyChecking=no || true
   
   # If the repository URL is HTTPS, switch to SSH if possible
-  REPO_URL=$(git config --get remote.origin.url)
+  REPO_URL=$(git config --get remote.origin.url || echo "")
   if [[ $REPO_URL == https://github.com/* ]]; then
     # Convert HTTPS URL to SSH URL
     REPO_PATH=$(echo $REPO_URL | sed 's|https://github.com/||')
@@ -69,6 +94,17 @@ if [ -n "$SSH_PRIVATE_KEY" ]; then
   echo "SSH setup complete."
 else
   echo "Note: SSH_PRIVATE_KEY environment variable not set. SSH authentication not configured."
+fi
+
+# Make sure we can access the repository
+echo "Testing repository access..."
+git remote -v
+
+# Try to fetch from the repository (will fail if credentials are incorrect)
+if git fetch origin --depth=1 2>/dev/null; then
+  echo "Repository access successful."
+else
+  echo "Warning: Unable to access the repository. Check your credentials and permissions."
 fi
 
 echo "Git access setup complete." 
