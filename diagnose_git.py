@@ -119,7 +119,7 @@ def check_git_repo():
     result = run_command(["git", "remote", "-v"])
     
     # Check for origin remote
-    if "origin" not in result.stdout:
+    if not result or "origin" not in result.stdout:
         print("❌ No 'origin' remote found")
         repo_url = os.environ.get("GIT_REPOSITORY_URL")
         if repo_url:
@@ -145,6 +145,7 @@ def check_git_access():
         print("❌ No remote URL configured")
         return False
     
+    print(remote_url)
     print(f"Remote URL: {remote_url}")
     
     # Try to list remote branches
@@ -165,6 +166,63 @@ def check_git_access():
     
     return result.returncode == 0
 
+def check_token_auth():
+    """Quick test for GitHub token authentication."""
+    print_section("GitHub Token Authentication Test")
+    
+    github_token = os.environ.get("GITHUB_TOKEN")
+    
+    if not github_token:
+        print("❌ GITHUB_TOKEN is not set in environment variables")
+        print("You must add the GITHUB_TOKEN to your Render environment.")
+        print("See render_environment_setup.md for instructions.")
+        return False
+    
+    # Test if token length is reasonable (tokens are usually >30 chars)
+    if len(github_token) < 30:
+        print("⚠️ Warning: GITHUB_TOKEN seems too short to be valid")
+        print(f"Token length: {len(github_token)} characters")
+    else:
+        print("✅ GITHUB_TOKEN is set and has a reasonable length")
+    
+    repo_url = os.environ.get("GIT_REPOSITORY_URL", "https://github.com/autismashramawaaz/AwaazFlexyTimeTable.git")
+    
+    # Verify the repository exists by making a direct API call
+    print("\nVerifying repository access via GitHub API...")
+    
+    # Extract owner and repo from the URL
+    parts = repo_url.replace("https://github.com/", "").replace(".git", "").split("/")
+    if len(parts) >= 2:
+        owner, repo = parts[0], parts[1]
+        
+        cmd = [
+            "curl", "-s", 
+            "-H", f"Authorization: token {github_token}",
+            f"https://api.github.com/repos/{owner}/{repo}"
+        ]
+        
+        result = run_command(cmd, show_command=False)
+        
+        if result and result.returncode == 0:
+            if "Not Found" in result.stdout or "Bad credentials" in result.stdout:
+                print("❌ Repository access test failed")
+                print("Your token does not have access to this repository")
+                return False
+            else:
+                try:
+                    data = json.loads(result.stdout)
+                    if "id" in data:
+                        print(f"✅ Successfully accessed repository: {data.get('full_name', repo_url)}")
+                        return True
+                except:
+                    pass
+        
+        print("❌ Failed to verify repository access")
+        return False
+    else:
+        print("❌ Could not parse repository URL")
+        return False
+
 def fix_remote_url():
     """Try to fix the remote URL using the GITHUB_TOKEN."""
     print_section("Fixing Remote URL")
@@ -175,7 +233,7 @@ def fix_remote_url():
     if not github_token:
         print("❌ GITHUB_TOKEN environment variable not set")
         print("Please set the GITHUB_TOKEN environment variable in your Render dashboard")
-        print("Instructions: See README_GIT_SETUP.md for details on creating and setting up a token")
+        print("Instructions: See render_environment_setup.md for details on creating and setting up a token")
         return False
     
     if not repo_url:
@@ -196,9 +254,18 @@ def fix_remote_url():
     
     # Update the URL to include the token for GitHub HTTPS URLs
     if repo_url.startswith("https://github.com/"):
+        # Create URL with token
         new_url = f"https://{github_token}@github.com/{repo_url.split('github.com/')[1]}"
         run_command(["git", "remote", "set-url", "origin", new_url])
         print("✅ Updated remote URL to use GitHub token for authentication")
+        
+        # Verify URL includes token (without showing the token in output)
+        result = run_command(["git", "remote", "-v"], show_command=False)
+        if result and github_token in result.stdout:
+            print("✅ Verified remote URL contains GitHub token")
+        else:
+            print("⚠️ Remote URL does not appear to include the GitHub token")
+        
         return True
     else:
         print("❌ Repository URL is not a GitHub HTTPS URL, cannot fix")
@@ -232,6 +299,59 @@ def fix_detached_head():
         print(f"Current branch: {current_branch}")
         print("✅ Not in detached HEAD state, no fix needed")
         return False
+
+def fix_git_identity():
+    """Fix Git identity issues by setting user name and email."""
+    print_section("Fixing Git Identity")
+    
+    # Check if Git user name is set
+    name_result = run_command(["git", "config", "user.name"], show_command=False)
+    email_result = run_command(["git", "config", "user.email"], show_command=False)
+    
+    identity_fixed = False
+    
+    # Fix Git user name if not set
+    if not name_result or not name_result.stdout.strip():
+        # Use environment variable or default
+        git_user_name = os.environ.get("GIT_USER_NAME", "AwaazFlexyTimeTable App")
+        run_command(["git", "config", "--global", "user.name", git_user_name])
+        print(f"✅ Set Git user.name to: {git_user_name}")
+        identity_fixed = True
+    else:
+        print(f"Git user.name already set: {name_result.stdout.strip()}")
+    
+    # Fix Git user email if not set
+    if not email_result or not email_result.stdout.strip():
+        # Use environment variable or default
+        git_user_email = os.environ.get("GIT_USER_EMAIL", "app@awaazflexytimetable.onrender.com")
+        run_command(["git", "config", "--global", "user.email", git_user_email])
+        print(f"✅ Set Git user.email to: {git_user_email}")
+        identity_fixed = True
+    else:
+        print(f"Git user.email already set: {email_result.stdout.strip()}")
+    
+    # Test if identity is now working
+    run_command(["git", "config", "--list"])
+    
+    # Try with a simple test commit
+    print("\nTesting Git identity with test commit:")
+    with open(".git_identity_test", "w") as f:
+        f.write(f"Git identity test\n{datetime.now().isoformat()}\n")
+    
+    add_result = run_command(["git", "add", ".git_identity_test"], show_command=False)
+    commit_test = run_command(["git", "commit", "--dry-run", "-m", "Testing Git identity"], check=False)
+    
+    # Clean up test file regardless of outcome
+    os.remove(".git_identity_test")
+    run_command(["git", "reset", "HEAD", ".git_identity_test"], show_command=False)
+    
+    if commit_test.returncode == 0:
+        print("✅ Git identity is working correctly")
+    else:
+        print("❌ Git identity is still not configured correctly")
+        print("Please ensure GIT_USER_NAME and GIT_USER_EMAIL are set in your environment")
+    
+    return identity_fixed
 
 def check_push_access():
     """Check if we can push to the remote repository."""
@@ -269,7 +389,7 @@ def check_push_access():
             if "could not read Username" in push_result.stderr:
                 print("\n🔑 Authentication issue detected:")
                 print("- The GITHUB_TOKEN environment variable is likely missing")
-                print("- Follow the instructions in README_GIT_SETUP.md to set up a token")
+                print("- Follow the instructions in render_environment_setup.md to set up a token")
             
             elif "Authentication failed" in push_result.stderr:
                 print("\n🔑 Authentication failed:")
@@ -310,19 +430,9 @@ def run_quick_fixes():
         print("❌ Git installation issues cannot be automatically fixed")
         return False
     
-    # Check and fix Git user configuration
-    git_user_name = os.environ.get("GIT_USER_NAME")
-    git_user_email = os.environ.get("GIT_USER_EMAIL")
-    
-    if not git_user_name:
-        print("Setting default Git user.name")
-        run_command(["git", "config", "--global", "user.name", "AwaazFlexyTimeTable App"])
-        fixes_applied.append("Set default Git user.name")
-    
-    if not git_user_email:
-        print("Setting default Git user.email")
-        run_command(["git", "config", "--global", "user.email", "app@awaazflexytimetable.onrender.com"])
-        fixes_applied.append("Set default Git user.email")
+    # Fix Git identity issues
+    if fix_git_identity():
+        fixes_applied.append("Fixed Git identity")
     
     # Check and fix Git repository
     if not os.path.isdir(".git"):
@@ -364,13 +474,19 @@ def create_summary(results):
         print("\n⚠️ Some checks failed. Please review the output above for issues.")
         
         # Add recommendations based on failed checks
-        if results.get("Git Push Access") is False:
+        if results.get("GitHub Token Auth") is False:
+            print("\n🔑 GitHub Token Authentication Issue:")
+            print("1. Set up a GitHub personal access token")
+            print("2. Add the token to your environment variables as GITHUB_TOKEN")
+            print("3. Follow the instructions in render_environment_setup.md")
+        
+        elif results.get("Git Push Access") is False:
             print("\nRecommended action for push failure:")
             print("1. Set up a GitHub personal access token")
             print("2. Add the token to your environment variables as GITHUB_TOKEN")
             print("3. Set GIT_AUTO_PUSH=true in your environment variables")
             print("4. Run this diagnostic script again")
-            print("\nFor detailed instructions, see the README_GIT_SETUP.md file.")
+            print("\nFor detailed instructions, see the render_environment_setup.md file.")
 
 def main():
     """Run the diagnostic checks."""
@@ -383,6 +499,18 @@ def main():
     # Check environment
     env_vars = check_environment()
     
+    # Quick check for GitHub token - if missing, do this first
+    results["GitHub Token Auth"] = check_token_auth()
+    
+    if not results["GitHub Token Auth"]:
+        print("\n❌ GitHub token authentication failed. This is the most critical issue to fix.")
+        print("Please configure your GitHub token before proceeding with other diagnostics.")
+        print("Follow the instructions in render_environment_setup.md")
+        
+        # Create a simple summary and exit
+        create_summary({"GitHub Token Auth": False})
+        return 1
+    
     # Check Git installation
     results["Git Installation"] = check_git_installation()
     
@@ -392,6 +520,9 @@ def main():
         print("Please install Git before continuing")
         create_summary(results)
         return 1
+    
+    # Fix Git identity issues
+    fix_git_identity()
     
     # Check Git repository
     results["Git Repository"] = check_git_repo()
