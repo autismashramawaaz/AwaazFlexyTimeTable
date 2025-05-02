@@ -10,7 +10,7 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: FLASK_ENV
-        value: production
+        value: development
       - key: GIT_AUTO_PUSH
         value: false
       - key: WEB_CONCURRENCY
