@@ -1,0 +1,1 @@
+Testing auto-push with the app's git_add_commit function
