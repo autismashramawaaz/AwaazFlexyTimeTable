@@ -1,7 +1,15 @@
 {
-  "name": "CG7",
+  "name": "MariaH",
+  "initials": "",
   "performance_score": "",
-  "hourly_rate": "",
-  "location": "",
-  "id": "20250501164319"
+  "default_hourly_rate": "",
+  "id": "20250501164319",
+  "picture": "",
+  "location_rates": [
+    {
+      "location": "Turlock",
+      "rate": 20
+    }
+  ],
+  "hourly_rate": ""
 }
