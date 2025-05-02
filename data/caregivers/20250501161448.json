@@ -1,7 +1,19 @@
 {
-  "name": "CG3",
+  "name": "Fatima",
+  "initials": "",
   "performance_score": "",
-  "hourly_rate": "",
-  "location": "",
-  "id": "20250501161448"
+  "default_hourly_rate": "",
+  "id": "20250501161448",
+  "picture": "",
+  "location_rates": [
+    {
+      "location": "Turlock",
+      "rate": 20
+    },
+    {
+      "location": "Tracy",
+      "rate": 27
+    }
+  ],
+  "hourly_rate": ""
 }
