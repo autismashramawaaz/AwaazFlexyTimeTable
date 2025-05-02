@@ -1,0 +1,2 @@
+This is a test file to verify that git_add_commit now correctly auto-pushes changes.
+The function has been updated to read GIT_AUTO_PUSH directly from environment variables instead of app.config. 
