@@ -300,4 +300,55 @@ select[multiple] option:checked {
         height: auto;
         position: static;
     }
+}
+
+/* Styles for caregiver initials badge */
+.badge {
+    font-size: 0.7rem;
+    font-weight: normal;
+    margin-left: 5px;
+}
+
+/* Styles for location rates button */
+.location-rates-btn {
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    margin-left: 5px;
+}
+
+/* Styles for popover */
+.popover {
+    max-width: 300px;
+}
+
+.popover-body {
+    padding: 0;
+}
+
+.location-rates-table {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* Make location fields more compact on small screens */
+@media (max-width: 768px) {
+    .location-field {
+        margin-bottom: 0.5rem;
+    }
+}
+
+/* Location Rate Item Styles */
+.location-rate-item {
+    align-items: center;
+}
+
+.location-rate-item .btn-danger {
+    padding: 0.25rem 0.5rem;
+}
+
+/* Make location fields more compact on smaller screens */
+@media (max-width: 767.98px) {
+    .location-rate-item .col-md-1 {
+        margin-top: 0.5rem;
+    }
 } 

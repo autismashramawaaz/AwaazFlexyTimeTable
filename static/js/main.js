@@ -69,6 +69,14 @@ $(document).ready(function() {
             reader.readAsDataURL(file);
         }
     });
+    
+    // Location rates handlers
+    $('#add-location-btn').on('click', addLocationRateField);
+    
+    // Use event delegation for dynamically added remove buttons
+    $(document).on('click', '.remove-location', function() {
+        $(this).closest('.location-rate-item').remove();
+    });
 });
 
 // Initialize application
@@ -138,20 +146,48 @@ function loadDashboardData() {
 
 // Populate recent caregivers in dashboard
 function populateRecentCaregivers() {
-    const recentCaregivers = caregivers.slice(0, 5);
-    let html = '';
+    if (!caregivers || !Array.isArray(caregivers) || caregivers.length === 0) {
+        $('#recent-caregivers').html('<div class="text-center">No caregivers found</div>');
+        return;
+    }
     
-    recentCaregivers.forEach(caregiver => {
+    // Sort caregivers by performance score in descending order
+    const sortedCaregivers = [...caregivers].sort((a, b) => {
+        const scoreA = parseFloat(a.performance_score) || 0;
+        const scoreB = parseFloat(b.performance_score) || 0;
+        return scoreB - scoreA;
+    });
+    
+    // Get the top 5 caregivers
+    const topCaregivers = sortedCaregivers.slice(0, 5);
+    
+    let html = '';
+    topCaregivers.forEach(caregiver => {
+        const imgSrc = caregiver.picture 
+            ? `/static/${caregiver.picture}` 
+            : 'https://via.placeholder.com/40';
+        
+        // Get the default rate
+        const defaultRate = caregiver.default_hourly_rate || caregiver.hourly_rate || 'N/A';
+        
         html += `
-            <tr>
-                <td>${caregiver.name}</td>
-                <td>${caregiver.performance_score || 'N/A'}</td>
-                <td>$${caregiver.hourly_rate || 'N/A'}</td>
-            </tr>
+            <div class="col-6 col-md-4 col-lg-2 mb-3">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <img src="${imgSrc}" class="rounded-circle mb-2" alt="${caregiver.name || 'Caregiver'}" style="width: 60px; height: 60px; object-fit: cover;">
+                        <h6 class="mb-0">
+                            ${caregiver.name || 'Unnamed'}
+                            ${caregiver.initials ? `<span class="badge bg-secondary">${caregiver.initials}</span>` : ''}
+                        </h6>
+                        <p class="text-muted small mb-1">Score: ${caregiver.performance_score || 'N/A'}</p>
+                        <p class="small mb-0">Rate: $${defaultRate}</p>
+                    </div>
+                </div>
+            </div>
         `;
     });
     
-    $('#recent-caregivers').html(html || '<tr><td colspan="3" class="text-center">No caregivers found</td></tr>');
+    $('#recent-caregivers').html(html);
 }
 
 // Populate recent activities in dashboard
@@ -319,12 +355,37 @@ function populateCaregivers() {
             ? `/static/${caregiver.picture}` 
             : 'https://via.placeholder.com/40';
             
+        // Get the default rate
+        const defaultRate = caregiver.default_hourly_rate || caregiver.hourly_rate || 'N/A';
+        
+        // Format location rates if available
+        let locationRatesHtml = '';
+        if (caregiver.location_rates && Array.isArray(caregiver.location_rates) && caregiver.location_rates.length > 0) {
+            const safeContent = formatLocationRates(caregiver.location_rates);
+            const safeName = caregiver.name ? 
+                caregiver.name.replace(/"/g, '&quot;').replace(/'/g, '&#039;') : 
+                'Caregiver';
+                
+            locationRatesHtml = `
+                <button class="btn btn-sm btn-outline-info location-rates-btn" 
+                    data-caregiver-id="${caregiver.id}">
+                    <i class="fas fa-map-marker-alt"></i> View Rates
+                </button>
+            `;
+        }
+            
         html += `
             <tr>
-                <td><img src="${imgSrc}" class="caregiver-img" alt="${caregiver.name}"></td>
-                <td>${caregiver.name}</td>
+                <td><img src="${imgSrc}" class="caregiver-img" alt="${caregiver.name || ''}"></td>
+                <td>
+                    ${caregiver.name || ''}
+                    ${caregiver.initials ? `<span class="badge bg-secondary">${caregiver.initials}</span>` : ''}
+                </td>
                 <td>${caregiver.performance_score || 'N/A'}</td>
-                <td>$${caregiver.hourly_rate || 'N/A'}</td>
+                <td>
+                    $${defaultRate}
+                    ${locationRatesHtml}
+                </td>
                 <td class="action-buttons">
                     <button class="btn btn-sm btn-outline-primary edit-caregiver" data-id="${caregiver.id}">
                         <i class="fa-solid fa-edit"></i>
@@ -339,6 +400,26 @@ function populateCaregivers() {
     
     $('#caregivers-list').html(html || '<tr><td colspan="5" class="text-center">No caregivers found</td></tr>');
     
+    // Set up location rates popovers after the HTML is added to the DOM
+    $('.location-rates-btn').each(function() {
+        const caregiverId = $(this).data('caregiver-id');
+        const caregiver = caregivers.find(c => c.id === caregiverId);
+        
+        if (caregiver && caregiver.location_rates) {
+            const title = `Location Rates for ${caregiver.name || 'Caregiver'}`;
+            const content = formatLocationRates(caregiver.location_rates);
+            
+            // Initialize popover
+            new bootstrap.Popover(this, {
+                title: title,
+                content: content,
+                html: true,
+                trigger: 'click',
+                placement: 'top'
+            });
+        }
+    });
+    
     // Add event handlers
     $('.edit-caregiver').on('click', function() {
         const id = $(this).data('id');
@@ -349,6 +430,54 @@ function populateCaregivers() {
         const id = $(this).data('id');
         deleteCaregiver(id);
     });
+    
+    // Add global click handler to close popovers when clicking outside
+    $(document).off('click.popoverClose').on('click.popoverClose', function(e) {
+        if ($(e.target).closest('.popover').length === 0 && 
+            !$(e.target).hasClass('location-rates-btn') && 
+            $(e.target).closest('.location-rates-btn').length === 0) {
+            $('.location-rates-btn').each(function() {
+                const popover = bootstrap.Popover.getInstance(this);
+                if (popover) {
+                    popover.hide();
+                }
+            });
+        }
+    });
+}
+
+// Format location rates for popover display
+function formatLocationRates(rates) {
+    // Check if rates is valid
+    if (!rates || !Array.isArray(rates) || rates.length === 0) {
+        return '<div class="text-center p-2">No location rates available</div>';
+    }
+    
+    let html = '<div class="location-rates-table">';
+    html += '<table class="table table-sm mb-0">';
+    html += '<thead><tr><th>Location</th><th>Rate</th></tr></thead>';
+    html += '<tbody>';
+    
+    // Only process valid rates
+    rates.forEach(rate => {
+        if (rate && rate.location && rate.rate !== undefined) {
+            // Escape location name for XSS protection
+            const safeLoc = rate.location
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+                
+            html += `<tr>
+                <td>${safeLoc}</td>
+                <td>$${rate.rate}</td>
+            </tr>`;
+        }
+    });
+    
+    html += '</tbody></table></div>';
+    return html;
 }
 
 function showCaregiverModal(caregiver = null) {
@@ -356,14 +485,48 @@ function showCaregiverModal(caregiver = null) {
     $('#caregiver-form')[0].reset();
     $('#picture-preview').empty();
     
+    // Clear any existing location rate fields except the first one
+    $('.location-rate-item:not(:first)').remove();
+    
+    // Reset the first location rate field
+    $('.location-name:first').val('');
+    $('.location-rate:first').val('');
+    
     if (caregiver) {
         // Edit mode
         $('#caregiverModalLabel').text('Edit Caregiver');
         $('#caregiver-id').val(caregiver.id);
         $('#caregiver-name').val(caregiver.name);
+        $('#caregiver-initials').val(caregiver.initials || '');
         $('#caregiver-performance').val(caregiver.performance_score);
-        $('#caregiver-rate').val(caregiver.hourly_rate);
-        $('#caregiver-location').val(caregiver.location);
+        $('#caregiver-default-rate').val(caregiver.default_hourly_rate || caregiver.hourly_rate || '');
+        
+        // Load location rates if they exist
+        if (caregiver.location_rates && caregiver.location_rates.length > 0) {
+            // Clear the first empty row
+            $('#location-rates-container').empty();
+            
+            // Add each location rate
+            caregiver.location_rates.forEach(locationRate => {
+                const newField = `
+                    <div class="location-rate-item row mb-2">
+                        <div class="col-md-6">
+                            <input type="text" class="form-control location-name" placeholder="Location Name" name="location_names[]" value="${locationRate.location || ''}">
+                        </div>
+                        <div class="col-md-5">
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control location-rate" placeholder="Rate" name="location_rates[]" min="0" step="0.01" value="${locationRate.rate || ''}">
+                            </div>
+                        </div>
+                        <div class="col-md-1">
+                            <button type="button" class="btn btn-sm btn-danger remove-location"><i class="fas fa-times"></i></button>
+                        </div>
+                    </div>
+                `;
+                $('#location-rates-container').append(newField);
+            });
+        }
         
         if (caregiver.picture) {
             $('#picture-preview').html(`<img src="/static/${caregiver.picture}" class="mt-2 img-thumbnail">`);
@@ -382,6 +545,36 @@ function showCaregiverModal(caregiver = null) {
 function saveCaregiver() {
     const id = $('#caregiver-id').val();
     const formData = new FormData($('#caregiver-form')[0]);
+    
+    // Process location rates
+    const locationNames = [];
+    $('input[name="location_names[]"]').each(function() {
+        locationNames.push($(this).val());
+    });
+    
+    const locationRates = [];
+    $('input[name="location_rates[]"]').each(function() {
+        locationRates.push($(this).val());
+    });
+    
+    // Create location rates array for JSON
+    const locationRatesArray = [];
+    for (let i = 0; i < locationNames.length; i++) {
+        if (locationNames[i] && locationRates[i]) {
+            locationRatesArray.push({
+                location: locationNames[i],
+                rate: parseFloat(locationRates[i])
+            });
+        }
+    }
+    
+    // Add location rates as JSON string
+    formData.append('location_rates_json', JSON.stringify(locationRatesArray));
+    
+    // For backward compatibility
+    if (formData.get('default_hourly_rate')) {
+        formData.append('hourly_rate', formData.get('default_hourly_rate'));
+    }
     
     if (id) {
         // Update
@@ -720,4 +913,25 @@ function deleteActivity(id) {
             }
         });
     }
+}
+
+// Add new location rate field
+function addLocationRateField() {
+    const newField = `
+        <div class="location-rate-item row mb-2">
+            <div class="col-md-6">
+                <input type="text" class="form-control location-name" placeholder="Location Name" name="location_names[]">
+            </div>
+            <div class="col-md-5">
+                <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input type="number" class="form-control location-rate" placeholder="Rate" name="location_rates[]" min="0" step="0.01">
+                </div>
+            </div>
+            <div class="col-md-1">
+                <button type="button" class="btn btn-sm btn-danger remove-location"><i class="fas fa-times"></i></button>
+            </div>
+        </div>
+    `;
+    $('#location-rates-container').append(newField);
 } 

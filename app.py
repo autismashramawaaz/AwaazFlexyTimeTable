@@ -94,6 +94,25 @@ def create_caregiver():
             file.save(file_path)
             data['picture'] = os.path.join('images', 'caregivers', image_filename)
     
+    # Process location rates
+    if 'location_rates_json' in data:
+        try:
+            data['location_rates'] = json.loads(data['location_rates_json'])
+            del data['location_rates_json']
+            # Delete the individual location fields to prevent duplication
+            if 'location_names[]' in data:
+                del data['location_names[]']
+            if 'location_rates[]' in data:
+                del data['location_rates[]']
+        except:
+            # If there's an error processing the JSON, just ignore it
+            if 'location_rates_json' in data:
+                del data['location_rates_json']
+    
+    # If default_hourly_rate is provided, make it the primary rate for backward compatibility
+    if 'default_hourly_rate' in data:
+        data['hourly_rate'] = data['default_hourly_rate']
+    
     with open(os.path.join('data/caregivers', f'{id}.json'), 'w') as f:
         json.dump(data, f, indent=2)
     
@@ -132,6 +151,25 @@ def update_caregiver(id):
     else:
         # Keep existing picture
         data['picture'] = existing.get('picture', '')
+    
+    # Process location rates
+    if 'location_rates_json' in data:
+        try:
+            data['location_rates'] = json.loads(data['location_rates_json'])
+            del data['location_rates_json']
+            # Delete the individual location fields to prevent duplication
+            if 'location_names[]' in data:
+                del data['location_names[]']
+            if 'location_rates[]' in data:
+                del data['location_rates[]']
+        except:
+            # If there's an error processing the JSON, just ignore it
+            if 'location_rates_json' in data:
+                del data['location_rates_json']
+    
+    # If default_hourly_rate is provided, make it the primary rate for backward compatibility
+    if 'default_hourly_rate' in data:
+        data['hourly_rate'] = data['default_hourly_rate']
     
     with open(os.path.join('data/caregivers', f'{id}.json'), 'w') as f:
         json.dump(data, f, indent=2)
