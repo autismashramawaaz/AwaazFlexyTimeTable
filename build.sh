@@ -25,20 +25,16 @@ touch data/templates/.gitkeep
 touch data/calendars/.gitkeep
 touch static/images/caregivers/.gitkeep
 
-# Set up Git credentials and access
-echo "Setting up Git credentials and access..."
-if [ -f "setup_git_access.sh" ]; then
-  echo "Running Git setup script..."
-  bash setup_git_access.sh
-else
-  echo "Warning: setup_git_access.sh not found. Git operations may not work correctly."
-  
-  # Fallback: Basic Git configuration
-  if [ -n "$GIT_USER_NAME" ] && [ -n "$GIT_USER_EMAIL" ]; then
-    echo "Configuring Git user name and email..."
-    git config --global user.name "$GIT_USER_NAME"
-    git config --global user.email "$GIT_USER_EMAIL"
-  fi
-fi
+# Set correct permissions for scripts
+chmod +x setup_git_access.sh
+chmod +x diagnose_git.py
+
+# Set up Git access
+echo "Setting up Git access..."
+./setup_git_access.sh
+
+# Run diagnostic tests
+echo "Running Git diagnostics..."
+python diagnose_git.py || echo "Git diagnostics failed but continuing with build"
 
 echo "Build completed successfully!" 

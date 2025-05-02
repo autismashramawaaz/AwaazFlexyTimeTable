@@ -1,110 +1,97 @@
 #!/bin/bash
-set -e
+# Script to set up Git access for Render deployments
 
-echo "Setting up Git credentials and SSH access..."
+set -e # Exit on error
 
-# Set Git credentials from environment variables
-if [ -n "$GIT_USER_NAME" ] && [ -n "$GIT_USER_EMAIL" ]; then
-  echo "Configuring Git user name and email..."
-  git config --global user.name "$GIT_USER_NAME"
-  git config --global user.email "$GIT_USER_EMAIL"
-  echo "Git user configuration complete."
+echo "Setting up Git access..."
+
+# Check if Git is installed
+if ! command -v git &> /dev/null; then
+    echo "Git is not installed. Please install Git and try again."
+    exit 1
+fi
+
+# Configure Git user
+if [ -n "$GIT_USER_NAME" ]; then
+    echo "Setting Git user.name to: $GIT_USER_NAME"
+    git config --global user.name "$GIT_USER_NAME"
 else
-  echo "Warning: GIT_USER_NAME or GIT_USER_EMAIL environment variables not set."
+    echo "Setting default Git user.name: AwaazFlexyTimeTable App"
+    git config --global user.name "AwaazFlexyTimeTable App"
 fi
 
-# Check if this is a Git repository
-if [ ! -d .git ]; then
-  echo "Initializing Git repository..."
-  git init
+if [ -n "$GIT_USER_EMAIL" ]; then
+    echo "Setting Git user.email to: $GIT_USER_EMAIL"
+    git config --global user.email "$GIT_USER_EMAIL"
+else
+    echo "Setting default Git user.email: app@awaazflexytimetable.onrender.com"
+    git config --global user.email "app@awaazflexytimetable.onrender.com"
 fi
 
-# Check if origin remote exists and set it if needed
-if ! git remote | grep -q "^origin$"; then
-  echo "Setting up Git remote..."
-  # Get the repository URL from environment variable, or use a default
-  REPO_URL="${GIT_REPOSITORY_URL:-https://github.com/autismashramawaaz/AwaazFlexyTimeTable.git}"
-  git remote add origin "$REPO_URL"
-  echo "Added remote origin: $REPO_URL"
+# Check if we're in a Git repository
+if [ ! -d ".git" ]; then
+    echo "Not in a Git repository. Initializing..."
+    git init
 fi
 
-# Get current remote URL
-CURRENT_REMOTE_URL=$(git config --get remote.origin.url || echo "none")
-echo "Current remote URL: $CURRENT_REMOTE_URL"
-
-# Set up HTTPS credentials if GITHUB_TOKEN is provided
-if [ -n "$GITHUB_TOKEN" ]; then
-  echo "Configuring Git HTTPS credentials with token..."
-  # Extract the repository URL
-  REPO_URL=$(git config --get remote.origin.url || echo "")
-  
-  if [ -z "$REPO_URL" ]; then
-    echo "No remote repository URL configured. Using default GitHub repository."
-    REPO_URL="https://github.com/autismashramawaaz/AwaazFlexyTimeTable.git"
-    git remote set-url origin "$REPO_URL" || git remote add origin "$REPO_URL"
-  fi
-  
-  # If URL starts with https://, update it to include the token
-  if [[ $REPO_URL == https://* ]]; then
-    # Extract the domain and path
-    DOMAIN=$(echo $REPO_URL | cut -d'/' -f3)
-    PATH_PART=$(echo $REPO_URL | cut -d'/' -f4-)
+# Set up or update remote repository URL with GitHub token
+if [ -n "$GIT_REPOSITORY_URL" ]; then
+    echo "Setting up remote repository URL: $GIT_REPOSITORY_URL"
     
-    # Update the URL with the token
-    NEW_URL="https://$GITHUB_TOKEN@$DOMAIN/$PATH_PART"
-    git remote set-url origin "$NEW_URL"
-    echo "Updated Git remote URL with authentication token."
-  else
-    echo "Repository URL is not HTTPS, skipping token setup."
-  fi
-else
-  echo "Note: GITHUB_TOKEN environment variable not set. HTTPS authentication not configured."
-fi
-
-# Set up SSH access if SSH_PRIVATE_KEY is provided
-if [ -n "$SSH_PRIVATE_KEY" ]; then
-  echo "Setting up SSH access..."
-  
-  # Create .ssh directory if it doesn't exist
-  mkdir -p ~/.ssh
-  chmod 700 ~/.ssh
-  
-  # Add GitHub to known hosts
-  echo "github.com ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAq2A7hRGmdnm9tUDbO9IDSwBK6TbQa+PXYPCPy6rbTrTtw7PHkccKrpp0yVhp5HdEIcKr6pLlVDBfOLX9QUsyCOV0wzfjIJNlGEYsdlLJizHhbn2mUjvSAHQqZETYP81eFzLQNnPHt4EVVUh7VfDESU84KezmD5QlWpXLmvU31/yMf+Se8xhHTvKSCZIFImWwoG6mbUoWf9nzpIoaSjB+weqqUUmpaaasXVal72J+UX2B+2RPW3RcT0eOzQgqlJL3RKrTJvdsjE3JEAvGq3lGHSZXy28G3skua2SmVi/w4yCE6gbODqnTWlg7+wC604ydGXA8VJiS5ap43JXiUFFAaQ==" >> ~/.ssh/known_hosts
-  
-  # Save the private key
-  echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-  chmod 600 ~/.ssh/id_rsa
-  
-  # Test SSH connection
-  echo "Testing SSH connection to GitHub..."
-  ssh -T git@github.com -o StrictHostKeyChecking=no || true
-  
-  # If the repository URL is HTTPS, switch to SSH if possible
-  REPO_URL=$(git config --get remote.origin.url || echo "")
-  if [[ $REPO_URL == https://github.com/* ]]; then
-    # Convert HTTPS URL to SSH URL
-    REPO_PATH=$(echo $REPO_URL | sed 's|https://github.com/||')
-    SSH_URL="git@github.com:$REPO_PATH"
+    # Check if origin remote exists
+    if git remote | grep -q "^origin$"; then
+        echo "Remote 'origin' already exists. Updating URL..."
+        git remote set-url origin "$GIT_REPOSITORY_URL"
+    else
+        echo "Adding remote 'origin'..."
+        git remote add origin "$GIT_REPOSITORY_URL"
+    fi
     
-    git remote set-url origin "$SSH_URL"
-    echo "Converted remote URL from HTTPS to SSH: $SSH_URL"
-  fi
-  
-  echo "SSH setup complete."
+    # If GitHub token is available, update URL to include it
+    if [ -n "$GITHUB_TOKEN" ] && [[ "$GIT_REPOSITORY_URL" == *"github.com"* ]]; then
+        echo "GitHub token found. Configuring authentication..."
+        # Extract the repo part from the URL (after github.com/)
+        REPO_PART=$(echo "$GIT_REPOSITORY_URL" | sed -E 's|https://github.com/||')
+        
+        # Create new URL with token
+        NEW_URL="https://${GITHUB_TOKEN}@github.com/${REPO_PART}"
+        
+        echo "Setting remote URL with GitHub token authentication..."
+        git remote set-url origin "$NEW_URL"
+    else
+        echo "No GitHub token found. Authentication may fail for HTTPS URLs."
+    fi
 else
-  echo "Note: SSH_PRIVATE_KEY environment variable not set. SSH authentication not configured."
+    echo "Warning: GIT_REPOSITORY_URL not set. Git push operations may fail."
 fi
 
-# Make sure we can access the repository
-echo "Testing repository access..."
+# Try to fetch the latest code (will fail if authentication issues)
+echo "Attempting to fetch from remote repository..."
+if git fetch origin --quiet 2>/dev/null; then
+    echo "Successfully fetched from remote repository."
+else
+    echo "Warning: Could not fetch from remote repository. This may be due to authentication issues."
+fi
+
+# Check current branch and fix detached HEAD if needed
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ "$CURRENT_BRANCH" = "HEAD" ]; then
+    echo "Detected detached HEAD state. Attempting to check out master branch..."
+    
+    # Try to create and check out master branch
+    if ! git checkout master 2>/dev/null; then
+        echo "Master branch doesn't exist. Creating it..."
+        git checkout -b master
+    fi
+else
+    echo "Current branch: $CURRENT_BRANCH"
+fi
+
+# Verify the setup
+echo "Git configuration:"
+git config --list
+
+echo "Git remote URLs:"
 git remote -v
 
-# Try to fetch from the repository (will fail if credentials are incorrect)
-if git fetch origin --depth=1 2>/dev/null; then
-  echo "Repository access successful."
-else
-  echo "Warning: Unable to access the repository. Check your credentials and permissions."
-fi
-
-echo "Git access setup complete." 
+echo "Git setup completed." 

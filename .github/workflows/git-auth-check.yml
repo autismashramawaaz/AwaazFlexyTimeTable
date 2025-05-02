@@ -1,0 +1,66 @@
+name: Git Authentication Check
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  check-git-auth:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Run Git Auth Diagnostics
+      env:
+        GIT_USER_NAME: "GitHub Actions"
+        GIT_USER_EMAIL: "actions@github.com"
+        GIT_AUTO_PUSH: "true"
+        GIT_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        chmod +x diagnose_git.py
+        python diagnose_git.py
+    
+    - name: Check setup_git_access.sh is executable
+      run: |
+        if [[ -f setup_git_access.sh ]]; then
+          chmod +x setup_git_access.sh
+          echo "✅ setup_git_access.sh is now executable"
+        else
+          echo "❌ setup_git_access.sh was not found"
+          exit 1
+        fi
+    
+    - name: Test setup_git_access.sh Script
+      env:
+        GIT_USER_NAME: "GitHub Actions"
+        GIT_USER_EMAIL: "actions@github.com"
+        GIT_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        ./setup_git_access.sh
+    
+    - name: Create Test Commit
+      run: |
+        echo "Test commit from GitHub Actions at $(date)" > test_file.txt
+        git add test_file.txt
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        git commit -m "Test commit from GitHub Actions"
+        
+        # Test if we can push (will fail on pull requests, which is expected)
+        if [[ "${{ github.event_name }}" == "push" ]]; then
+          echo "Testing git push (this will fail on pull requests)"
+          git push || echo "Push failed, but this is expected in some cases"
+        else
+          echo "Skipping push test on pull request"
+        fi 
