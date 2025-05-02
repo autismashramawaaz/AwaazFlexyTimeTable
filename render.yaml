@@ -12,6 +12,6 @@ services:
       - key: FLASK_ENV
         value: development
       - key: GIT_AUTO_PUSH
-        value: false
+        value: true
       - key: WEB_CONCURRENCY
         value: 4 
