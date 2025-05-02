@@ -1,0 +1,2 @@
+This is a second test file to verify that git_add_commit now correctly auto-pushes changes.
+Testing with GIT_AUTO_PUSH=true set directly in the environment. 
