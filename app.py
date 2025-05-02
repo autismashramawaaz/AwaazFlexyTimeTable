@@ -40,138 +40,87 @@ if git_user_name and git_user_email:
         print(f"Failed to configure git credentials: {e}")
 
 # Git utility functions
-def git_add_commit(file_path, message):
-    """Add and commit a file to git, then push if configured"""
-    # Skip Git operations in production environment or if Git is not available
-    # We're allowing Git in production now, so comment this out
-    # if app.config['ENVIRONMENT'] == 'production':
-    #    print(f"Production environment detected, skipping Git operations for {file_path}")
-    #    return
-        
-    # Get the auto-push setting directly from environment for reliability
-    auto_push = os.environ.get('GIT_AUTO_PUSH', 'false').lower() == 'true'
-    print(f"Git auto-push setting from environment: {auto_push}")
+def git_add_commit(commit_message, files=None):
+    """Add and commit changes to Git, and optionally push to remote."""
+    # Check if in development mode or explicitly allowed in production
+    if app.config['ENV'].lower() != 'development' and not os.environ.get('ALLOW_GIT_IN_PRODUCTION', 'false').lower() == 'true':
+        app.logger.info("Git operations skipped in production. Set ALLOW_GIT_IN_PRODUCTION=true to enable.")
+        return False, "Git operations disabled in production"
     
     try:
-        # Configure Git user info for this commit if environment variables are available
-        git_user_name = os.environ.get('GIT_USER_NAME', 'AwaazFlexyTimeTable')
-        git_user_email = os.environ.get('GIT_USER_EMAIL', 'app@awaazflexytimetable.onrender.com')
-        
-        # Set local Git configuration for this repository
-        subprocess.run(["git", "config", "user.name", git_user_name], check=True)
-        subprocess.run(["git", "config", "user.email", git_user_email], check=True)
-        
-        # Check if we're in a git repository
-        try:
-            subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], check=True, 
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        except subprocess.CalledProcessError:
-            print("Not in a git repository. Initializing...")
-            subprocess.run(["git", "init"], check=True)
-            
-            # Set up remote if GIT_REPOSITORY_URL is provided
-            repo_url = os.environ.get('GIT_REPOSITORY_URL')
-            if repo_url:
-                try:
-                    # Check if origin remote exists
-                    result = subprocess.run(["git", "remote"], check=True, 
-                                          stdout=subprocess.PIPE, text=True)
-                    remotes = result.stdout.strip().split('\n')
-                    
-                    if 'origin' not in remotes:
-                        print(f"Adding remote origin: {repo_url}")
-                        subprocess.run(["git", "remote", "add", "origin", repo_url], check=True)
-                    else:
-                        print("Remote origin already exists. Setting URL...")
-                        subprocess.run(["git", "remote", "set-url", "origin", repo_url], check=True)
-                except Exception as e:
-                    print(f"Error setting up remote: {e}")
-        
-        # Use subprocess instead of os.system for better control
-        subprocess.run(["git", "add", file_path], check=True)
-        
-        # Check if there are changes to commit
-        status_result = subprocess.run(
-            ["git", "status", "--porcelain", file_path],
-            check=True,
-            capture_output=True,
-            text=True
-        )
-        
-        if not status_result.stdout.strip():
-            print(f"No changes to commit for {file_path}")
-            return
-            
-        commit_result = subprocess.run(["git", "commit", "-m", message], check=True,
-                                     capture_output=True, text=True)
-        print(commit_result.stdout)
-        
-        # Push changes if auto push is enabled
-        if auto_push:
-            remote = os.environ.get('GIT_REMOTE', 'origin')
-            branch = os.environ.get('GIT_BRANCH', 'master')
-            
-            # Make sure the remote exists
-            remote_result = subprocess.run(["git", "remote", "-v"], 
-                                         capture_output=True, text=True)
-            print(f"Remotes: {remote_result.stdout}")
-            
-            if remote not in remote_result.stdout:
-                repo_url = os.environ.get('GIT_REPOSITORY_URL')
-                if repo_url:
-                    print(f"Remote {remote} not found. Adding it with URL: {repo_url}")
-                    subprocess.run(["git", "remote", "add", remote, repo_url], check=True)
-                else:
-                    print(f"Remote {remote} not found and GIT_REPOSITORY_URL not set. Cannot push.")
-                    return
-            
-            print(f"Auto-push enabled, pushing to {remote}/{branch}...")
-            
-            # Check if we need to set up HTTPS credentials for GitHub
-            github_token = os.environ.get('GITHUB_TOKEN')
-            if github_token:
-                remote_url = subprocess.run(
-                    ["git", "config", "--get", f"remote.{remote}.url"],
-                    capture_output=True, text=True, check=False
-                ).stdout.strip()
-                
-                if remote_url.startswith('https://github.com/'):
-                    # Update URL to include token
-                    new_url = f"https://{github_token}@github.com/{remote_url.split('github.com/')[1]}"
-                    subprocess.run(["git", "remote", "set-url", remote, new_url], check=True)
-                    print(f"Updated remote URL to use GitHub token for authentication")
-            
-            try:
-                push_result = subprocess.run(
-                    ["git", "push", remote, branch],
-                    check=True,
-                    capture_output=True,
-                    text=True
-                )
-                print(push_result.stdout)
-                print(f"Successfully pushed changes to {remote}/{branch}")
-            except subprocess.CalledProcessError as e:
-                print(f"Push failed: {e}")
-                print(f"Error output: {e.stderr}")
-                
-                # Try to diagnose the issue
-                if "not a git repository" in e.stderr:
-                    print("The remote repository is not properly configured. Check your GIT_REPOSITORY_URL setting.")
-                elif "Permission denied" in e.stderr:
-                    print("Permission denied. Check your GitHub token or SSH key.")
-                elif "Authentication failed" in e.stderr:
-                    print("Authentication failed. Check your GitHub token.")
-                elif "Could not read from remote repository" in e.stderr:
-                    print("Could not access the remote repository. Check if the URL is correct and accessible.")
+        # Get auto push setting from environment each time
+        auto_push = os.environ.get('GIT_AUTO_PUSH', 'false').lower() == 'true'
+        app.logger.debug(f"Git auto-push is {'enabled' if auto_push else 'disabled'}")
+
+        # If no files specified, add all changes
+        if files is None:
+            subprocess.run(['git', 'add', '.'], check=True)
         else:
-            print("Auto-push disabled, skipping push")
+            subprocess.run(['git', 'add'] + files, check=True)
             
+        # Configure git identity if not already set
+        try:
+            user_name = subprocess.check_output(['git', 'config', 'user.name']).decode().strip()
+        except subprocess.CalledProcessError:
+            git_user_name = os.environ.get('GIT_USER_NAME', 'AwaazFlexyTimeTable App')
+            subprocess.run(['git', 'config', 'user.name', git_user_name], check=True)
+            
+        try:
+            user_email = subprocess.check_output(['git', 'config', 'user.email']).decode().strip()
+        except subprocess.CalledProcessError:
+            git_user_email = os.environ.get('GIT_USER_EMAIL', 'app@awaazflexytimetable.onrender.com')
+            subprocess.run(['git', 'config', 'user.email', git_user_email], check=True)
+        
+        # Commit changes
+        subprocess.run(['git', 'commit', '-m', commit_message], check=True)
+        app.logger.info(f"Changes committed: {commit_message}")
+        
+        # Push to remote if enabled
+        if auto_push:
+            try:
+                subprocess.run(['git', 'push'], check=True)
+                app.logger.info("Changes pushed to remote repository")
+            except subprocess.CalledProcessError as e:
+                error_msg = e.stderr.decode() if e.stderr else str(e)
+                
+                diagnostic_msg = """
+Git push failed. This is likely due to authentication issues.
+
+Please run the diagnostic script to identify and fix the issue:
+    ./git_diagnosis.sh  or  python3 diagnose_git.py
+
+Common solutions:
+1. Set GITHUB_TOKEN environment variable
+2. Configure Git identity with GIT_USER_NAME and GIT_USER_EMAIL
+3. Set correct GIT_REPOSITORY_URL
+
+For detailed setup instructions, see render_environment_setup.md
+"""
+                app.logger.error(f"Git push failed: {error_msg}\n{diagnostic_msg}")
+                return False, f"Commit successful, but push failed: {error_msg}"
+                
+        return True, "Changes committed" + (" and pushed" if auto_push else "")
     except subprocess.CalledProcessError as e:
-        print(f"Git operation failed: {e}")
-        if hasattr(e, 'stderr') and e.stderr:
-            print(f"Error details: {e.stderr}")
+        error_msg = e.stderr.decode() if e.stderr else str(e)
+        
+        # Check for common errors and provide helpful messages
+        if "could not read Username" in error_msg:
+            diagnostic_msg = """
+Git authentication failed. This is likely because the GITHUB_TOKEN is not set.
+
+Please run the diagnostic script to identify and fix the issue:
+    ./git_diagnosis.sh  or  python3 diagnose_git.py
+
+For detailed setup instructions, see render_environment_setup.md
+"""
+            app.logger.error(f"Git authentication error: {error_msg}\n{diagnostic_msg}")
+        else:
+            app.logger.error(f"Git operation failed: {error_msg}")
+            
+        return False, f"Git operation failed: {error_msg}"
     except Exception as e:
-        print(f"Error in git operations: {e}")
+        app.logger.error(f"Unexpected error in git operation: {str(e)}")
+        return False, f"Unexpected error: {str(e)}"
 
 # Routes
 @app.route('/')
@@ -237,7 +186,7 @@ def create_caregiver():
     with open(os.path.join('data/caregivers', f'{id}.json'), 'w') as f:
         json.dump(data, f, indent=2)
     
-    git_add_commit(f'data/caregivers/{id}.json', f"Added caregiver {data.get('name', id)}")
+    git_add_commit(f"Added caregiver {data.get('name', id)}")
     
     return jsonify(data), 201
 
@@ -295,7 +244,7 @@ def update_caregiver(id):
     with open(os.path.join('data/caregivers', f'{id}.json'), 'w') as f:
         json.dump(data, f, indent=2)
     
-    git_add_commit(f'data/caregivers/{id}.json', f"Updated caregiver {data.get('name', id)}")
+    git_add_commit(f"Updated caregiver {data.get('name', id)}")
     
     return jsonify(data)
 
@@ -311,7 +260,7 @@ def delete_caregiver(id):
             os.remove(os.path.join('static', caregiver['picture']))
         
         os.remove(file_path)
-        git_add_commit(file_path, f"Deleted caregiver {caregiver.get('name', id)}")
+        git_add_commit(f"Deleted caregiver {caregiver.get('name', id)}")
         
         return jsonify({"message": "Caregiver deleted successfully"})
     except FileNotFoundError:
@@ -346,7 +295,7 @@ def create_category():
     with open(os.path.join('data/categories', f'{id}.json'), 'w') as f:
         json.dump(data, f, indent=2)
     
-    git_add_commit(f'data/categories/{id}.json', f"Added category {data.get('name', id)}")
+    git_add_commit(f"Added category {data.get('name', id)}")
     
     return jsonify(data), 201
 
@@ -364,7 +313,7 @@ def update_category(id):
     with open(os.path.join('data/categories', f'{id}.json'), 'w') as f:
         json.dump(data, f, indent=2)
     
-    git_add_commit(f'data/categories/{id}.json', f"Updated category {data.get('name', id)}")
+    git_add_commit(f"Updated category {data.get('name', id)}")
     
     return jsonify(data)
 
@@ -376,7 +325,7 @@ def delete_category(id):
             category = json.load(f)
         
         os.remove(file_path)
-        git_add_commit(file_path, f"Deleted category {category.get('name', id)}")
+        git_add_commit(f"Deleted category {category.get('name', id)}")
         
         return jsonify({"message": "Category deleted successfully"})
     except FileNotFoundError:
@@ -415,7 +364,7 @@ def create_activity():
     with open(os.path.join('data/activities', f'{id}.json'), 'w') as f:
         json.dump(data, f, indent=2)
     
-    git_add_commit(f'data/activities/{id}.json', f"Added activity {data.get('name', id)}")
+    git_add_commit(f"Added activity {data.get('name', id)}")
     
     return jsonify(data), 201
 
@@ -433,7 +382,7 @@ def update_activity(id):
     with open(os.path.join('data/activities', f'{id}.json'), 'w') as f:
         json.dump(data, f, indent=2)
     
-    git_add_commit(f'data/activities/{id}.json', f"Updated activity {data.get('name', id)}")
+    git_add_commit(f"Updated activity {data.get('name', id)}")
     
     return jsonify(data)
 
@@ -445,7 +394,7 @@ def delete_activity(id):
             activity = json.load(f)
         
         os.remove(file_path)
-        git_add_commit(file_path, f"Deleted activity {activity.get('name', id)}")
+        git_add_commit(f"Deleted activity {activity.get('name', id)}")
         
         return jsonify({"message": "Activity deleted successfully"})
     except FileNotFoundError:
@@ -492,7 +441,7 @@ def create_template():
     with open(os.path.join('data/templates', f'{id}.json'), 'w') as f:
         json.dump(data, f, indent=2)
     
-    git_add_commit(f'data/templates/{id}.json', f"Added template {data.get('name', id)}")
+    git_add_commit(f"Added template {data.get('name', id)}")
     
     return jsonify(data), 201
 
@@ -510,7 +459,7 @@ def update_template(id):
     with open(os.path.join('data/templates', f'{id}.json'), 'w') as f:
         json.dump(data, f, indent=2)
     
-    git_add_commit(f'data/templates/{id}.json', f"Updated template {data.get('name', id)}")
+    git_add_commit(f"Updated template {data.get('name', id)}")
     
     return jsonify(data)
 
@@ -522,7 +471,7 @@ def delete_template(id):
             template = json.load(f)
         
         os.remove(file_path)
-        git_add_commit(file_path, f"Deleted template {template.get('name', id)}")
+        git_add_commit(f"Deleted template {template.get('name', id)}")
         
         return jsonify({"message": "Template deleted successfully"})
     except FileNotFoundError:
@@ -565,7 +514,7 @@ def create_calendar():
     with open(os.path.join('data/calendars', f'{id}.json'), 'w') as f:
         json.dump(data, f, indent=2)
     
-    git_add_commit(f'data/calendars/{id}.json', f"Added calendar {data.get('name', id)}")
+    git_add_commit(f"Added calendar {data.get('name', id)}")
     
     return jsonify(data), 201
 
@@ -583,7 +532,7 @@ def update_calendar(id):
     with open(os.path.join('data/calendars', f'{id}.json'), 'w') as f:
         json.dump(data, f, indent=2)
     
-    git_add_commit(f'data/calendars/{id}.json', f"Updated calendar {data.get('name', id)}")
+    git_add_commit(f"Updated calendar {data.get('name', id)}")
     
     return jsonify(data)
 
@@ -595,7 +544,7 @@ def delete_calendar(id):
             calendar = json.load(f)
         
         os.remove(file_path)
-        git_add_commit(file_path, f"Deleted calendar {calendar.get('name', id)}")
+        git_add_commit(f"Deleted calendar {calendar.get('name', id)}")
         
         return jsonify({"message": "Calendar deleted successfully"})
     except FileNotFoundError:
@@ -886,62 +835,39 @@ def test_git_config():
 
 # Diagnostic endpoint for Git configuration
 @app.route('/api/git/diagnose', methods=['GET'])
-def diagnose_git():
-    """Run comprehensive Git diagnostic tests"""
+def git_diagnose():
+    """Endpoint to run Git diagnostics and return results."""
     try:
-        # Check if the diagnostic script exists
-        script_path = 'diagnose_git.py'
-        if not os.path.exists(script_path):
-            return jsonify({
-                "error": "Diagnostic script not found",
-                "success": False
-            }), 404
-            
-        # Run the diagnostic script
-        result = subprocess.run(
-            [sys.executable, script_path],
-            capture_output=True,
-            text=True,
-            env=os.environ.copy()
-        )
+        # Create a unique filename for the output
+        output_file = f"git_diagnostic_{datetime.now().strftime('%Y%m%d%H%M%S')}.txt"
         
-        # Parse the output to extract meaningful information
-        output_lines = result.stdout.split('\n')
-        sections = {}
-        current_section = "General"
-        sections[current_section] = []
+        # Run the diagnostic script and capture output
+        result = subprocess.run(['python3', 'diagnose_git.py'], 
+                               capture_output=True, 
+                               text=True)
         
-        for line in output_lines:
-            if line.startswith("="*80):
-                # New section header follows
-                continue
-            elif line.startswith(" ") and len(line.strip()) > 0 and line.strip()[0] not in ["=", "$"]:
-                # This is a section header
-                current_section = line.strip()
-                sections[current_section] = []
-            else:
-                sections[current_section].append(line)
+        # Save output to file
+        with open(output_file, 'w') as f:
+            f.write(result.stdout)
+            if result.stderr:
+                f.write("\n\nERRORS:\n")
+                f.write(result.stderr)
         
-        # Extract environment variables
-        env_vars = {}
-        if "Environment Variables" in sections:
-            for line in sections["Environment Variables"]:
-                if ": " in line:
-                    key, value = line.split(": ", 1)
-                    env_vars[key] = value
+        # Return the results
+        response = {
+            'success': result.returncode == 0,
+            'output': result.stdout,
+            'errors': result.stderr if result.stderr else None,
+            'output_file': output_file,
+            'exit_code': result.returncode
+        }
         
-        return jsonify({
-            "success": result.returncode == 0,
-            "output": result.stdout,
-            "error": result.stderr if result.stderr else None,
-            "sections": sections,
-            "environment": env_vars,
-            "exit_code": result.returncode
-        })
+        return jsonify(response)
     except Exception as e:
         return jsonify({
-            "error": f"Error running diagnostic: {str(e)}",
-            "success": False
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to run diagnostics. Try running ./git_diagnosis.sh from the command line.'
         }), 500
 
 if __name__ == '__main__':
