@@ -35,17 +35,24 @@ def git_add_commit(file_path, message):
         print(f"Production environment detected, skipping Git operations for {file_path}")
         return
         
+    # Get the auto-push setting directly from environment for reliability
+    auto_push = os.environ.get('GIT_AUTO_PUSH', 'false').lower() == 'true'
+    print(f"Git auto-push setting from environment: {auto_push}")
+    
     try:
         # Use subprocess instead of os.system for better control
         subprocess.run(["git", "add", file_path], check=True)
         subprocess.run(["git", "commit", "-m", message], check=True)
         
         # Push changes if auto push is enabled
-        if app.config['GIT_AUTO_PUSH']:
+        if auto_push:
             remote = app.config['GIT_REMOTE']
             branch = app.config['GIT_BRANCH']
+            print(f"Auto-push enabled, pushing to {remote}/{branch}...")
             subprocess.run(["git", "push", remote, branch], check=True)
             print(f"Successfully pushed changes to {remote}/{branch}")
+        else:
+            print("Auto-push disabled, skipping push")
             
     except subprocess.CalledProcessError as e:
         print(f"Git operation failed: {e}")
